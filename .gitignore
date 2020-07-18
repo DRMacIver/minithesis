@@ -1,4 +1,11 @@
 *.swp
 .pytest_cache/
 __pycache__/
-.minithesis-cache
+.minithesis-cache.*
+venv
+.pyc
+*.egg-info
+__pycache__
+.coverage
+.hypothesis/
+.pytest_cache/
