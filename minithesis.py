@@ -1,3 +1,17 @@
+"""
+This file implements a simple property-based testing library called
+minithesis. It's not really intended to be used as is, but is instead
+a proof of concept that implements as much of the core ideas of
+Hypothesis in a simple way that is designed for people who want to
+implement a property-based testing library for non-Python languages.
+
+minithesis is always going to be self-contained in a single file
+and consist of < 1000 sloc (as measured by cloc). This doesn't
+count comments and I intend to comment on it extensively.
+
+"""
+
+
 from array import array
 from enum import IntEnum
 from random import Random
@@ -8,7 +22,6 @@ class Possibility(object):
     """Represents something that can be generated.
     Pass one of these to TestCase.any to get a concrete value.
     """
-
     def __init__(self, produce=None):
         if produce is not None:
             self.produce = produce
@@ -52,22 +65,16 @@ class Status(IntEnum):
 class TestCase(object):
     """Represents a single generated test case, which consists
     of an underlying set of choices that produce possibilities."""
-
     @classmethod
     def for_choices(cls, choices, print_results=False):
         """Returns a test case that makes this series of choices."""
-        return TestCase(
-            prefix=choices,
-            random=None,
-            max_size=len(choices),
-            print_results=print_results,
-        )
+        return TestCase(prefix=choices, random=None, max_size=len(choices), print_results=print_results)
 
-    def __init__(self, prefix, random, max_size=float("inf"), print_results=False):
+    def __init__(self, prefix, random, max_size=float('inf'), print_results=False):
         self.prefix = prefix
         self.random = random
         self.max_size = max_size
-        self.choices = array("I")
+        self.choices = array('I')
         self.status = None
         self.print_results = print_results
         self.depth = 0
@@ -117,7 +124,7 @@ class TestCase(object):
 
     def __should_print(self):
         return self.print_results and self.depth == 0
-
+    
     def __make_choice(self, n, rnd_method):
         """Make a choice in [0, n], by calling rnd_method if
         randomness is needed."""
@@ -137,9 +144,10 @@ class TestCase(object):
         return result
 
 
+
 # We cap the maximum amount of entropy a test case can use.
 # This prevents cases where the generated test case size explodes
-# by effectively rejection
+# by effectively rejection 
 BUFFER_SIZE = 8 * 1024
 
 
@@ -169,9 +177,7 @@ class TestingState(object):
         if test_case.status >= Status.VALID:
             self.valid_test_cases += 1
         if test_case.status == Status.INTERESTING:
-            if self.result is None or sort_key(test_case.choices) < sort_key(
-                self.result
-            ):
+            if self.result is None or sort_key(test_case.choices) < sort_key(self.result):
                 self.result = test_case.choices
 
     def run(self):
@@ -180,13 +186,13 @@ class TestingState(object):
 
     def generate(self):
         while (
-            self.result is None
-            and self.valid_test_cases < self.max_examples
-            and self.calls < self.max_examples * 10
+            self.result is None and
+            self.valid_test_cases < self.max_examples and
+            self.calls < self.max_examples * 10
         ):
-            self.test_function(
-                TestCase(prefix=(), random=self.random, max_size=BUFFER_SIZE)
-            )
+            self.test_function(TestCase(
+                prefix=(), random=self.random, max_size=BUFFER_SIZE
+            ))
 
     def shrink(self):
         if self.result is None:
@@ -219,7 +225,7 @@ class TestingState(object):
             while k > 0:
                 i = len(self.result) - k - 1
                 while i >= 0:
-                    attempt = self.result[:i] + self.result[i + k :]
+                    attempt = self.result[:i] + self.result[i + k:]
                     assert len(attempt) < len(self.result)
                     if not consider(attempt):
                         i -= 1
@@ -230,9 +236,7 @@ class TestingState(object):
             while k > 0:
                 i = len(self.result) - k - 1
                 while i >= 0:
-                    attempt = (
-                        self.result[:i] + array("I", [0] * k) + self.result[i + k :]
-                    )
+                    attempt = self.result[:i] + array('I', [0] * k) + self.result[i + k:]
                     if consider(attempt):
                         i -= k
                     else:
@@ -250,7 +254,7 @@ class TestingState(object):
                 hi = self.result[i]
                 while lo + 1 < hi:
                     mid = lo + (hi - lo) // 2
-                    attempt = array("I", self.result)
+                    attempt = array('I', self.result)
                     attempt[i] = mid
                     if consider(attempt):
                         hi = mid
@@ -271,7 +275,6 @@ def run_test(max_examples=100, seed=None, database=None):
     * dict: A dict-like object in which results will be cached and resumed
       from, ensuring that if a test is run twice it fails in the same way.
     """
-
     def accept(test):
         random = Random(seed)
 
@@ -283,7 +286,9 @@ def run_test(max_examples=100, seed=None, database=None):
                     raise
                 test_case.mark_status(Status.INTERESTING)
 
-        state = TestingState(random, mark_failures_interesting, max_examples)
+        state = TestingState(
+            random, mark_failures_interesting, max_examples
+        )
 
         if database is None:
             # We're using the DBM module because it's an easy default.
@@ -291,17 +296,14 @@ def run_test(max_examples=100, seed=None, database=None):
             # thing there designed to be checked into git but honestly
             # nobody ever checks it into git - and I would encourage you
             # to use some more sensible key/value store here.
-            db = dbm.open(".minithesis-cache", "c")
+            db = dbm.open('.minithesis-cache', 'c')
         else:
             db = database
 
         previous_failure = db.get(test.__name__)
 
         if previous_failure is not None:
-            choices = [
-                int.from_bytes(previous_failure[i : i + 8], "big")
-                for i in range(0, len(previous_failure), 8)
-            ]
+            choices = [int.from_bytes(previous_failure[i:i+8], 'big') for i in range(0, len(previous_failure), 8)]
             state.test_function(TestCase.for_choices(choices))
 
         if state.result is None:
@@ -310,12 +312,11 @@ def run_test(max_examples=100, seed=None, database=None):
         if state.result is None:
             db.pop(test.__name__, None)
         else:
-            db[test.__name__] = b"".join(i.to_bytes(8, "big") for i in state.result)
+            db[test.__name__] = b''.join(i.to_bytes(8, 'big') for i in state.result)
 
-        if hasattr(db, "close"):
+        if hasattr(db, 'close'):
             db.close()
 
         if state.result is not None:
             test(TestCase.for_choices(state.result, print_results=True))
-
     return accept
