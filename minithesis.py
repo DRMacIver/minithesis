@@ -147,6 +147,7 @@ class TestCase(object):
         self.status = None
         self.print_results = print_results
         self.depth = 0
+        self.targeting_score = None
 
     def choice(self, n):
         """Returns a number in the range [0, n]"""
@@ -171,6 +172,11 @@ class TestCase(object):
         mark this test case as invalid."""
         if not precondition:
             self.reject()
+
+    def target(self, score):
+        """Set a score to maximize. Multiple calls to this function
+        will override previous ones."""
+        self.targeting_score = score
 
     def any(self, possibility):
         """Return a possible value from ``possibility``."""
@@ -296,6 +302,7 @@ class TestingState(object):
         self.valid_test_cases = 0
         self.calls = 0
         self.result = None
+        self.best_scoring = None
 
     def test_function(self, test_case):
         try:
@@ -307,21 +314,70 @@ class TestingState(object):
         self.calls += 1
         if test_case.status >= Status.VALID:
             self.valid_test_cases += 1
+
+            if test_case.targeting_score is not None:
+                relevant_info = (test_case.targeting_score, test_case.choices)
+                if self.best_scoring is None:
+                    self.best_scoring = relevant_info
+                else:
+                    best, existing_choices = self.best_scoring
+                    if test_case.targeting_score > best:
+                        self.best_scoring = relevant_info
+
         if test_case.status == Status.INTERESTING:
             if self.result is None or sort_key(test_case.choices) < sort_key(
                 self.result
             ):
                 self.result = test_case.choices
 
+    def target(self):
+        """If any test cases have had ``target()`` called on them, do a simple
+        hill climbing algorithm to attempt to optimise that target score."""
+        if self.result is not None or self.best_scoring is None:
+            return
+
+        def adjust(i, step):
+            """Can we improve the score by changing choices[i] by step?"""
+            score, choices = self.best_scoring
+            if choices[i] + step < 0 or choices[i].bit_length() >= 64:
+                return False
+            attempt = array("I", choices)
+            attempt[i] += step
+            test_case = TestCase(
+                prefix=attempt, random=self.random, max_size=BUFFER_SIZE
+            )
+            self.test_function(test_case)
+            return (
+                test_case.status >= Status.VALID
+                and test_case.targeting_score is not None
+                and test_case.targeting_score >= score
+            )
+
+        while self.should_keep_generating():
+            i = self.random.randrange(0, len(self.best_scoring[1]))
+            if adjust(i, 1):
+                sign = 1
+            elif adjust(i, -1):
+                sign = -1
+            else:
+                continue
+
+            k = 1
+            while adjust(i, sign * k):
+                k *= 2
+
+            while k > 0:
+                while adjust(i, sign * k):
+                    pass
+                k //= 2
+
     def run(self):
         self.generate()
+        self.target()
         self.shrink()
 
-    def generate(self):
-        """Run random generation until either we have found an interesting
-        test case or hit the limit of how many test cases we should
-        evaluate."""
-        while (
+    def should_keep_generating(self):
+        return (
             self.result is None
             and self.valid_test_cases < self.max_examples
             and
@@ -330,6 +386,14 @@ class TestingState(object):
             # to avoid taking a prohibitively long time on tests which
             # have hard or impossible to satisfy preconditions.
             self.calls < self.max_examples * 10
+        )
+
+    def generate(self):
+        """Run random generation until either we have found an interesting
+        test case or hit the limit of how many test cases we should
+        evaluate."""
+        while self.should_keep_generating() and (
+            self.best_scoring is None or self.valid_test_cases <= self.max_examples // 2
         ):
             self.test_function(
                 TestCase(prefix=(), random=self.random, max_size=BUFFER_SIZE)

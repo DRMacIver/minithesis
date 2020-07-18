@@ -92,3 +92,22 @@ def test_function_cache():
     assert cache([1000, 1]) == Status.INTERESTING
 
     assert state.calls == 2
+
+
+def test_can_target_a_score(capsys):
+    with pytest.raises(AssertionError):
+
+        @run_test(database={}, max_examples=1000)
+        def _(test_case):
+            n = test_case.choice(1000)
+            m = test_case.choice(1000)
+            score = n + m
+            test_case.target(score)
+            assert score < 2000
+
+    captured = capsys.readouterr()
+
+    assert [c.strip() for c in captured.out.splitlines()] == [
+        "choice(1000): 1000",
+        "choice(1000): 1000",
+    ]
