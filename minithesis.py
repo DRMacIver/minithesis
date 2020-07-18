@@ -12,10 +12,10 @@ count comments and I intend to comment on it extensively.
 """
 
 
+import dbm
 from array import array
 from enum import IntEnum
 from random import Random
-import dbm
 
 
 def run_test(max_examples=100, seed=None, database=None):

@@ -1,14 +1,10 @@
-from minithesis import (
-    run_test,
-    Possibility,
-    Unsatisfiable,
-    Status,
-    TestingState as State,
-    CachedTestFunction,
-)
+from random import Random
 
 import pytest
-from random import Random
+
+from minithesis import CachedTestFunction, Possibility, Status
+from minithesis import TestingState as State
+from minithesis import Unsatisfiable, run_test
 
 
 @Possibility
