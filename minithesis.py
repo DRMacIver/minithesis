@@ -44,8 +44,9 @@ def run_test(max_examples=100, random=None, database=None, quiet=False):
     * max_examples: the maximum number of valid test cases to run for.
       Note that under some circumstances the test may run fewer test
       cases than this.
-    * seed: A fixed seed to use for randomness.
-    * dict: A dict-like object in which results will be cached and resumed
+    * random: An instance of random.Random that will be used for all
+      nondeterministic choices.
+    * database: A dict-like object in which results will be cached and resumed
       from, ensuring that if a test is run twice it fails in the same way.
     * quiet: Will not print anything on failure if True.
     """
