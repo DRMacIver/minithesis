@@ -12,7 +12,8 @@ Minithesis supports:
 * A test database
 * Targeted Property-Based Testing
 
-And it achieves this all in a relatively small amount of code.
+And it achieves this all in a relatively small amount of code - my original goal was to keep it under 1000 sloc, but then I implemented about twice the feature set I'd intended to and it didn't hit 300 sloc,
+so I doubt I'll come close to that (including comments, docstrings, etc. it might eventually hit 1kloc as I try to make it more easily understandable and more thoroughly explained)
 
 ## Notes
 
