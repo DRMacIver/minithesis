@@ -18,7 +18,7 @@ from enum import IntEnum
 from random import Random
 
 
-def run_test(max_examples=100, seed=None, database=None):
+def run_test(max_examples=100, random=None, database=None, quiet=False):
     """Decorator to run a test. Usage is:
 
     .. code-block: python
@@ -47,11 +47,10 @@ def run_test(max_examples=100, seed=None, database=None):
     * seed: A fixed seed to use for randomness.
     * dict: A dict-like object in which results will be cached and resumed
       from, ensuring that if a test is run twice it fails in the same way.
+    * quiet: Will not print anything on failure if True.
     """
 
     def accept(test):
-        random = Random(seed)
-
         def mark_failures_interesting(test_case):
             try:
                 test(test_case)
@@ -60,7 +59,9 @@ def run_test(max_examples=100, seed=None, database=None):
                     raise
                 test_case.mark_status(Status.INTERESTING)
 
-        state = TestingState(random, mark_failures_interesting, max_examples)
+        state = TestingState(
+            random or Random(), mark_failures_interesting, max_examples
+        )
 
         if database is None:
             # We're using the DBM module because it's an easy default.
@@ -96,7 +97,7 @@ def run_test(max_examples=100, seed=None, database=None):
             db.close()
 
         if state.result is not None:
-            test(TestCase.for_choices(state.result, print_results=True))
+            test(TestCase.for_choices(state.result, print_results=not quiet))
 
     return accept
 
@@ -108,21 +109,12 @@ class Possibility(object):
     Pass one of these to TestCase.any to get a concrete value.
     """
 
-    def __init__(self, produce=None):
-        if produce is not None:
-            self.produce = produce
-            self.name = produce.__name__
-        else:
-            self.name = "..."
+    def __init__(self, produce):
+        self.produce = produce
+        self.name = produce.__name__
 
     def __repr__(self):
-        if self.name is None:
-            return "Possibility(...)"
-        else:
-            return self.name
-
-    def produce(self, source):
-        raise NotImplementedError()
+        return self.name
 
 
 class TestCase(object):
@@ -219,9 +211,9 @@ class TestCase(object):
             result = self.prefix[len(self.choices)]
         else:
             result = rnd_method()
+        self.choices.append(result)
         if result > n:
             self.mark_status(Status.INVALID)
-        self.choices.append(result)
         return result
 
 
@@ -309,15 +301,18 @@ class TestingState(object):
         self.calls = 0
         self.result = None
         self.best_scoring = None
+        self.test_is_trivial = False
 
     def test_function(self, test_case):
         try:
             self.__test_function(test_case)
-            if test_case.status is None:
-                test_case.status = Status.VALID
         except StopTest:
             pass
+        if test_case.status is None:
+            test_case.status = Status.VALID
         self.calls += 1
+        if test_case.status >= Status.INVALID and len(test_case.choices) == 0:
+            self.test_is_trivial = True
         if test_case.status >= Status.VALID:
             self.valid_test_cases += 1
 
@@ -356,16 +351,17 @@ class TestingState(object):
             return (
                 test_case.status >= Status.VALID
                 and test_case.targeting_score is not None
-                and test_case.targeting_score >= score
+                and test_case.targeting_score > score
             )
 
         while self.should_keep_generating():
             i = self.random.randrange(0, len(self.best_scoring[1]))
-            if adjust(i, 1):
-                sign = 1
-            elif adjust(i, -1):
-                sign = -1
-            else:
+            sign = 0
+            for k in [1, -1]:
+                if adjust(i, k):
+                    sign = k
+                    break
+            if sign == 0:
                 continue
 
             k = 1
@@ -384,7 +380,8 @@ class TestingState(object):
 
     def should_keep_generating(self):
         return (
-            self.result is None
+            not self.test_is_trivial
+            and self.result is None
             and self.valid_test_cases < self.max_examples
             and
             # We impose a limit on the maximum number of calls as
@@ -413,7 +410,7 @@ class TestingState(object):
 
         https://drmaciver.github.io/papers/reduction-via-generation-preview.pdf
         """
-        if self.result is None:
+        if not self.result:
             return
 
         # Shrinking will typically try the same choice sequences over
