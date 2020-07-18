@@ -1,3 +1,4 @@
 *.swp
 .pytest_cache/
 __pycache__/
+.minithesis-cache

@@ -20,6 +20,5 @@ Tests and demo code are not counted towards that budget. Currently it is signifi
 
 Here are some things that I might implement if I can fit them into the budget but currently haven't:
 
-* Example database
 * Caching for the shrinker
 * Targeted property-based testing

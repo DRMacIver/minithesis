@@ -1,7 +1,7 @@
 from array import array
 from enum import IntEnum
 from random import Random
-
+import dbm
 
 
 class Possibility(object):
@@ -239,7 +239,18 @@ class TestingState(object):
                 i -= 1
 
 
-def run_test(max_examples=100, seed=None):
+def run_test(max_examples=100, seed=None, database=None):
+    """Decorator to run a test.
+
+    Arguments:
+
+    * max_examples: the maximum number of valid test cases to run for.
+      Note that under some circumstances the test may run fewer test
+      cases than this.
+    * seed: A fixed seed to use for randomness.
+    * dict: A dict-like object in which results will be cached and resumed
+      from, ensuring that if a test is run twice it fails in the same way.
+    """
     def accept(test):
         random = Random(seed)
 
@@ -251,12 +262,31 @@ def run_test(max_examples=100, seed=None):
                     raise
                 test_case.mark_status(Status.INTERESTING)
 
-
         state = TestingState(
             random, mark_failures_interesting, max_examples
         )
 
-        state.run()
+        if database is None:
+            db = dbm.open('.minithesis-cache', 'c')
+        else:
+            db = database
+
+        previous_failure = db.get(test.__name__)
+
+        if previous_failure is not None:
+            choices = [int.from_bytes(previous_failure[i:i+8], 'big') for i in range(0, len(previous_failure), 8)]
+            state.test_function(TestCase.for_choices(choices))
+
+        if state.result is None:
+            state.run()
+
+        if state.result is None:
+            db.pop(test.__name__, None)
+        else:
+            db[test.__name__] = b''.join(i.to_bytes(8, 'big') for i in state.result)
+
+        if hasattr(db, 'close'):
+            db.close()
 
         if state.result is not None:
             test(TestCase.for_choices(state.result, print_results=True))
