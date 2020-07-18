@@ -84,6 +84,9 @@ def run_test(max_examples=100, seed=None, database=None):
         if state.result is None:
             state.run()
 
+        if state.valid_test_cases == 0:
+            raise Unsatisfiable()
+
         if state.result is None:
             db.pop(test.__name__, None)
         else:
@@ -252,10 +255,18 @@ class TestingState(object):
         self.shrink()
 
     def generate(self):
+        """Run random generation until either we have found an interesting
+        test case or hit the limit of how many test cases we should
+        evaluate."""
         while (
             self.result is None
             and self.valid_test_cases < self.max_examples
-            and self.calls < self.max_examples * 10
+            and
+            # We impose a limit on the maximum number of calls as
+            # well as the maximum number of valid examples. This is
+            # to avoid taking a prohibitively long time on tests which
+            # have hard or impossible to satisfy preconditions.
+            self.calls < self.max_examples * 10
         ):
             self.test_function(
                 TestCase(prefix=(), random=self.random, max_size=BUFFER_SIZE)
@@ -318,7 +329,9 @@ class TestingState(object):
             while i >= 0:
                 # We assume that if we could replace the choice with zero
                 # then we would have on the previous step. Strictly
-                # this needn't be true.
+                # this needn't be true, but if it's not true then we're
+                # not at a fixed point and so it will be tried again on
+                # the next run through.
                 lo = 0
                 hi = self.result[i]
                 while lo + 1 < hi:
@@ -339,6 +352,10 @@ class Frozen(Exception):
 
 class StopTest(Exception):
     """Raised when a test should stop executing early."""
+
+
+class Unsatisfiable(Exception):
+    """Raised when a test has no valid examples."""
 
 
 class Status(IntEnum):

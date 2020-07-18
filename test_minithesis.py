@@ -1,4 +1,4 @@
-from minithesis import run_test, Possibility
+from minithesis import run_test, Possibility, Unsatisfiable
 
 import pytest
 
@@ -47,3 +47,20 @@ def test_reuses_results_from_the_database():
 
     assert len(db) == 1
     assert count == prev_count + 2
+
+
+def test_test_cases_satisfy_preconditions():
+    @run_test()
+    def _(test_case):
+        n = test_case.choice(10)
+        test_case.assume(n != 0)
+        assert n != 0
+
+
+def test_error_on_too_strict_precondition():
+    with pytest.raises(Unsatisfiable):
+
+        @run_test()
+        def _(test_case):
+            n = test_case.choice(10)
+            test_case.reject()
