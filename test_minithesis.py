@@ -1,6 +1,14 @@
-from minithesis import run_test, Possibility, Unsatisfiable
+from minithesis import (
+    run_test,
+    Possibility,
+    Unsatisfiable,
+    Status,
+    TestingState as State,
+    CachedTestFunction,
+)
 
 import pytest
+from random import Random
 
 
 @Possibility
@@ -64,3 +72,23 @@ def test_error_on_too_strict_precondition():
         def _(test_case):
             n = test_case.choice(10)
             test_case.reject()
+
+
+def test_function_cache():
+    def tf(tc):
+        if tc.choice(1000) >= 200:
+            tc.mark_status(Status.INTERESTING)
+        if tc.choice(1) == 0:
+            tc.reject()
+
+    state = State(Random(0), tf, 100)
+
+    cache = CachedTestFunction(state.test_function)
+
+    assert cache([1, 1]) == Status.VALID
+    assert cache([1]) == Status.OVERRUN
+    assert cache([1000]) == Status.INTERESTING
+    assert cache([1000]) == Status.INTERESTING
+    assert cache([1000, 1]) == Status.INTERESTING
+
+    assert state.calls == 2

@@ -225,6 +225,69 @@ def sort_key(choices):
     return (len(choices), choices)
 
 
+class CachedTestFunction(object):
+    """Returns a cached version of a function that maps
+    a choice sequence to the status of calling a test function
+    on a test case populated with it. Is able to take advantage
+    of the structure of the test function to predict the result
+    even if exact sequence of choices has not been seen
+    previously.
+
+    You can safely omit implementing this at the cost of
+    somewhat increased shrinking time.
+    """
+
+    def __init__(self, test_function):
+        self.test_function = test_function
+
+        # Tree nodes are either a point at which a choice occurs
+        # in which case they map the result of the choice to the
+        # tree node we are in after, or a Status object indicating
+        # mark_status was called at this point and all future
+        # choices are irrelevant.
+        #
+        # Note that a better implementation of this would use
+        # a Patricia trie, which implements long non-branching
+        # paths as an array inline. For simplicity we don't
+        # do that here.
+        self.tree = {}
+
+    def __call__(self, choices):
+        node = self.tree
+        try:
+            for c in choices:
+                node = node[c]
+                # mark_status was called, thus future choices
+                # will be ignored.
+                if isinstance(node, Status):
+                    assert node != Status.OVERRUN
+                    return node
+            # If we never entered an unknown region of the tree
+            # or hit a Status value, then we know that another
+            # choice will be made next and the result will overrun.
+            return Status.OVERRUN
+        except KeyError:
+            pass
+
+        # We now have to actually call the test function to find out
+        # what happens.
+        test_case = TestCase.for_choices(choices)
+        self.test_function(test_case)
+        assert test_case.status is not None
+
+        # We enter the choices made in a tree.
+        node = self.tree
+        for i, c in enumerate(test_case.choices):
+            if i + 1 < len(test_case.choices) or test_case.status == Status.OVERRUN:
+                try:
+                    node = node[c]
+                except KeyError:
+                    node = node.setdefault(c, {})
+            else:
+                node[c] = test_case.status
+        return test_case.status
+
+
 class TestingState(object):
     def __init__(self, random, test_function, max_examples):
         self.random = random
@@ -276,12 +339,18 @@ class TestingState(object):
         if self.result is None:
             return
 
+        # Shrinking will typically try the same choice sequences over
+        # and over again, so we cache the test function in order to
+        # not end up reevaluating it in those cases. This also allows
+        # us to catch cases where we try something that is e.g. a prefix
+        # of something we've previously tried, which is guaranteed
+        # not to work.
+        cached = CachedTestFunction(self.test_function)
+
         def consider(choices):
-            if choices == self.result:
-                return True
-            tc = TestCase.for_choices(choices)
-            self.test_function(tc)
-            return tc.status == Status.INTERESTING
+            return cached(choices) == Status.INTERESTING
+
+        assert consider(self.result)
 
         # We are going to perform a number of transformations to
         # the current result, iterating until none of them make any
