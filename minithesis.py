@@ -286,6 +286,11 @@ def run_test(max_examples=100, seed=None, database=None):
         state = TestingState(random, mark_failures_interesting, max_examples)
 
         if database is None:
+            # We're using the DBM module because it's an easy default.
+            # We don't use this in real Hypothesis - we've got a weird
+            # thing there designed to be checked into git but honestly
+            # nobody ever checks it into git - and I would encourage you
+            # to use some more sensible key/value store here.
             db = dbm.open(".minithesis-cache", "c")
         else:
             db = database
