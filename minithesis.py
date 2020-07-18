@@ -175,7 +175,13 @@ class TestCase(object):
 
     def target(self, score):
         """Set a score to maximize. Multiple calls to this function
-        will override previous ones."""
+        will override previous ones.
+
+        The name and idea come from Löscher, Andreas, and Konstantinos
+        Sagonas. "Targeted property-based testing." ISSTA. 2017, but
+        the implementation is based on that found in Hypothesis,
+        which is not that similar to anything described in the paper.
+        """
         self.targeting_score = score
 
     def any(self, possibility):
@@ -404,7 +410,7 @@ class TestingState(object):
         so that the choice sequence leading to our best example is
         shortlex smaller than the one we originally found. This improves
         the quality of the generated test case, as per our paper.
-        
+
         https://drmaciver.github.io/papers/reduction-via-generation-preview.pdf
         """
         if self.result is None:
