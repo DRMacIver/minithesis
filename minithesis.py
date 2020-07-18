@@ -86,6 +86,16 @@ class TestCase(object):
             print(f"weighted({p}): {result}")
         return result
 
+    def reject(self):
+        """Mark this test case as invalid."""
+        self.mark_status(Status.INVALID)
+
+    def assume(self, precondition):
+        """If this precondition is not met, abort the test and
+        mark this test case as invalid."""
+        if not precondition:
+            self.reject()
+
     def any(self, possibility):
         """Return a possible value from ``possibility``."""
         try:
