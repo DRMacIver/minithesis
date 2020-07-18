@@ -14,6 +14,7 @@ def list_of_integers(test_case):
 def test_finds_small_list(capsys):
 
     with pytest.raises(AssertionError):
+
         @run_test(database={})
         def _(test_case):
             ls = test_case.any(list_of_integers)
@@ -30,6 +31,7 @@ def test_reuses_results_from_the_database():
 
     def run():
         with pytest.raises(AssertionError):
+
             @run_test(database=db)
             def _(test_case):
                 nonlocal count
@@ -45,4 +47,3 @@ def test_reuses_results_from_the_database():
 
     assert len(db) == 1
     assert count == prev_count + 2
-
