@@ -336,6 +336,13 @@ class TestingState(object):
             )
 
     def shrink(self):
+        """If we have found an interesting example, try shrinking it
+        so that the choice sequence leading to our best example is
+        shortlex smaller than the one we originally found. This improves
+        the quality of the generated test case, as per our paper.
+        
+        https://drmaciver.github.io/papers/reduction-via-generation-preview.pdf
+        """
         if self.result is None:
             return
 
