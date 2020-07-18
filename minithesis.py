@@ -175,6 +175,8 @@ class TestingState(object):
             return
 
         def consider(choices):
+            if choices == self.result:
+                return True
             tc = TestCase.for_choices(choices)
             self.test_function(tc)
             return tc.status == Status.INTERESTING
