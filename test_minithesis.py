@@ -5,10 +5,11 @@ import pytest
 from hypothesis import HealthCheck, given, reject, settings
 from hypothesis import strategies as st
 
-from minithesis import (CachedTestFunction, Frozen, Possibility, Status,
-                        TestCase)
+from minithesis import CachedTestFunction, Frozen, Possibility, Status
+from minithesis import TestCase as TC
 from minithesis import TestingState as State
-from minithesis import Unsatisfiable, run_test
+from minithesis import (Unsatisfiable, integers, just, lists, mix_of, nothing,
+                        run_test, tuples)
 
 
 @Possibility
@@ -25,12 +26,12 @@ def test_finds_small_list(capsys):
 
         @run_test(database={})
         def _(test_case):
-            ls = test_case.any(list_of_integers)
+            ls = test_case.any(lists(integers(0, 10000)))
             assert sum(ls) <= 1000
 
     captured = capsys.readouterr()
 
-    assert captured.out.strip() == "any(list_of_integers): [1001]"
+    assert captured.out.strip() == "any(lists(integers(0, 10000))): [1001]"
 
 
 def test_reuses_results_from_the_database():
@@ -174,7 +175,7 @@ def test_prints_a_top_level_weighted(capsys):
 
 
 def test_errors_when_using_frozen():
-    tc = TestCase.for_choices([0])
+    tc = TC.for_choices([0])
     tc.status = Status.VALID
 
     with pytest.raises(Frozen):
@@ -185,9 +186,63 @@ def test_errors_when_using_frozen():
 
 
 def test_errors_on_too_large_choice():
-    tc = TestCase.for_choices([0])
+    tc = TC.for_choices([0])
     with pytest.raises(ValueError):
         tc.choice(2 ** 64)
+
+
+def test_can_choose_full_64_bits():
+    @run_test()
+    def _(tc):
+        tc.choice(2 ** 64 - 1)
+
+
+def test_mapped_possibility():
+    @run_test()
+    def _(tc):
+        n = tc.any(integers(0, 5).map(lambda n: n * 2))
+        assert n % 2 == 0
+
+
+def test_selected_possibility():
+    @run_test()
+    def _(tc):
+        n = tc.any(integers(0, 5).satisfying(lambda n: n % 2 == 0))
+        assert n % 2 == 0
+
+
+def test_bound_possibility():
+    @run_test()
+    def _(tc):
+        m, n = tc.any(
+            integers(0, 5).bind(lambda m: tuples(just(m), integers(m, m + 10),))
+        )
+
+        assert m <= n <= m + 10
+
+
+def test_cannot_witness_nothing():
+    with pytest.raises(Unsatisfiable):
+
+        @run_test()
+        def _(tc):
+            tc.any(nothing())
+
+
+def test_cannot_witness_empty_mix_of():
+    with pytest.raises(Unsatisfiable):
+
+        @run_test()
+        def _(tc):
+            tc.any(mix_of())
+
+
+def test_can_draw_mixture():
+    @run_test()
+    def _(tc):
+        m = tc.any(mix_of(integers(-5, 0), integers(2, 5)))
+        assert -5 <= m <= 5
+        assert m != 1
 
 
 class ShouldFail(Exception):

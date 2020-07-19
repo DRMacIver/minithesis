@@ -103,21 +103,6 @@ def run_test(max_examples=100, random=None, database=None, quiet=False):
     return accept
 
 
-class Possibility(object):
-    """Represents some range of values that might be used in
-    a test, that can be requested from a ``TestCase``.
-
-    Pass one of these to TestCase.any to get a concrete value.
-    """
-
-    def __init__(self, produce):
-        self.produce = produce
-        self.name = produce.__name__
-
-    def __repr__(self):
-        return self.name
-
-
 class TestCase(object):
     """Represents a single generated test case, which consists
     of an underlying set of choices that produce possibilities."""
@@ -216,6 +201,99 @@ class TestCase(object):
         if result > n:
             self.mark_status(Status.INVALID)
         return result
+
+
+class Possibility(object):
+    """Represents some range of values that might be used in
+    a test, that can be requested from a ``TestCase``.
+
+    Pass one of these to TestCase.any to get a concrete value.
+    """
+
+    def __init__(self, produce, name=None):
+        self.produce = produce
+        self.name = produce.__name__ if name is None else name
+
+    def __repr__(self):
+        return self.name
+
+    def map(self, f):
+        """Returns a ``Possibility`` where values come from
+        applying ``f`` to some possible value for ``self``."""
+        return Possibility(
+            lambda test_case: f(test_case.any(self)),
+            name=f"{self.name}.map({f.__name__})",
+        )
+
+    def bind(self, f):
+        """Returns a ``Possibility`` where values come from
+        applying ``f`` (which should return a new ``Possibility``
+        to some possible value for ``self`` then returning a possible
+        value from that."""
+        return Possibility(
+            lambda test_case: test_case.any(f(test_case.any(self))),
+            name=f"{self.name}.bind({f.__name__})",
+        )
+
+    def satisfying(self, f):
+        """Returns a ``Possibility`` whose values are any possible
+        value of ``self`` for which ``f`` returns True."""
+
+        def produce(test_case):
+            for _ in range(3):
+                candidate = test_case.any(self)
+                if f(candidate):
+                    return candidate
+            test_case.reject()
+
+        return Possibility(produce, name=f"{self.name}.select({f.__name__})")
+
+
+def integers(m, n):
+    """Any integer in the range [m, n] is possible"""
+    return Possibility(lambda tc: m + tc.choice(n - m), name=f"integers({m}, {n})")
+
+
+def lists(elements):
+    """Any lists whose elements are possible values from ``elements`` are possible."""
+
+    def produce(test_case):
+        result = []
+        while test_case.weighted(0.9):
+            result.append(test_case.any(elements))
+        return result
+
+    return Possibility(produce, name=f"lists({elements.name})")
+
+
+def just(value):
+    """Only ``value`` is possible."""
+    return Possibility(lambda tc: value, name=f"just({value})")
+
+
+def nothing():
+    """No possible values. i.e. Any call to ``any`` will reject
+    the test case."""
+    return Possibility(lambda tc: tc.reject())
+
+
+def mix_of(*possibilities):
+    """Possible values can be any value possible for one of ``possibilities``."""
+    if not possibilities:
+        return nothing()
+    return Possibility(
+        lambda tc: tc.any(possibilities[tc.choice(len(possibilities) - 1)]),
+        name="mix_of({', '.join(p.name for p in possibilities)})",
+    )
+
+
+def tuples(*possibilities):
+    """Any tuple t of of length len(possibilities) such that t[i] is possible
+    for possibilities[i] is possible."""
+    return Possibility(
+        lambda tc: tuple(tc.any(p) for p in possibilities),
+        name="tuples({', '.join(p.name for p in possibilities)})",
+    )
 
 
 # We cap the maximum amount of entropy a test case can use.
