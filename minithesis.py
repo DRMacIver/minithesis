@@ -44,7 +44,8 @@ performance, so it's mostly a nice to have.
 """
 
 
-import dbm
+import hashlib
+import os
 from array import array
 from enum import IntEnum
 from random import Random
@@ -97,12 +98,9 @@ def run_test(max_examples=100, random=None, database=None, quiet=False):
         )
 
         if database is None:
-            # We're using the DBM module because it's an easy default.
-            # We don't use this in real Hypothesis - we've got a weird
-            # thing there designed to be checked into git but honestly
-            # nobody ever checks it into git - and I would encourage you
-            # to use some more sensible key/value store here.
-            db = dbm.open(".minithesis-cache", "c")
+            # If the database is not set, use a standard cache directory
+            # location to persist examples.
+            db = DirectoryDB(".minithesis-cache")
         else:
             db = database
 
@@ -122,12 +120,12 @@ def run_test(max_examples=100, random=None, database=None, quiet=False):
             raise Unsatisfiable()
 
         if state.result is None:
-            db.pop(test.__name__, None)
+            try:
+                del db[test.__name__]
+            except KeyError:
+                pass
         else:
             db[test.__name__] = b"".join(i.to_bytes(8, "big") for i in state.result)
-
-        if hasattr(db, "close"):
-            db.close()
 
         if state.result is not None:
             test(TestCase.for_choices(state.result, print_results=not quiet))
@@ -597,6 +595,42 @@ class TestingState(object):
                     else:
                         lo = mid
                 i -= 1
+
+
+class DirectoryDB:
+    """A very basic key/value store that just uses a file system
+    directory to store values. You absolutely don't have to copy this
+    and should feel free to use a more reasonable key/value store
+    if you hvae easy access to one."""
+
+    def __init__(self, directory):
+        self.directory = directory
+        try:
+            os.mkdir(directory)
+        except FileExistsError:
+            pass
+
+    def __to_file(self, key):
+        return os.path.join(
+            self.directory, hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
+        )
+
+    def __setitem__(self, key, value):
+        with open(self.__to_file(key), "wb") as o:
+            o.write(value)
+
+    def get(self, key):
+        f = self.__to_file(key)
+        if not os.path.exists(f):
+            return None
+        with open(f, "rb") as i:
+            return i.read()
+
+    def __delitem__(self, key):
+        try:
+            os.unlink(self.__to_file(key))
+        except FileNotFoundError:
+            raise KeyError()
 
 
 class Frozen(Exception):

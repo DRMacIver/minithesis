@@ -5,7 +5,8 @@ import pytest
 from hypothesis import HealthCheck, given, reject, settings
 from hypothesis import strategies as st
 
-from minithesis import CachedTestFunction, Frozen, Possibility, Status
+from minithesis import (CachedTestFunction, DirectoryDB, Frozen, Possibility,
+                        Status)
 from minithesis import TestCase as TC
 from minithesis import TestingState as State
 from minithesis import (Unsatisfiable, integers, just, lists, mix_of, nothing,
@@ -34,8 +35,8 @@ def test_finds_small_list(capsys):
     assert captured.out.strip() == "any(lists(integers(0, 10000))): [1001]"
 
 
-def test_reuses_results_from_the_database():
-    db = {}
+def test_reuses_results_from_the_database(tmpdir):
+    db = DirectoryDB(tmpdir)
     count = 0
 
     def run():
@@ -49,12 +50,12 @@ def test_reuses_results_from_the_database():
 
     run()
 
-    assert len(db) == 1
+    assert len(tmpdir.listdir()) == 1
     prev_count = count
 
     run()
 
-    assert len(db) == 1
+    assert len(tmpdir.listdir()) == 1
     assert count == prev_count + 2
 
 
