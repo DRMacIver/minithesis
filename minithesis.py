@@ -136,7 +136,7 @@ class TestCase(object):
         self.prefix = prefix
         self.random = random
         self.max_size = max_size
-        self.choices = array("I")
+        self.choices = array("Q")
         self.status = None
         self.print_results = print_results
         self.depth = 0
@@ -202,7 +202,7 @@ class TestCase(object):
     def __make_choice(self, n, rnd_method):
         """Make a choice in [0, n], by calling rnd_method if
         randomness is needed."""
-        if n.bit_length() >= 64 or n < 0:
+        if n.bit_length() > 64 or n < 0:
             raise ValueError(f"Invalid choice {n}")
         if self.status is not None:
             raise Frozen()
@@ -343,7 +343,7 @@ class TestingState(object):
             score, choices = self.best_scoring
             if choices[i] + step < 0 or choices[i].bit_length() >= 64:
                 return False
-            attempt = array("I", choices)
+            attempt = array("Q", choices)
             attempt[i] += step
             test_case = TestCase(
                 prefix=attempt, random=self.random, max_size=BUFFER_SIZE
@@ -459,7 +459,7 @@ class TestingState(object):
                 i = len(self.result) - k - 1
                 while i >= 0:
                     attempt = (
-                        self.result[:i] + array("I", [0] * k) + self.result[i + k :]
+                        self.result[:i] + array("Q", [0] * k) + self.result[i + k :]
                     )
                     if consider(attempt):
                         i -= k
@@ -480,7 +480,7 @@ class TestingState(object):
                 hi = self.result[i]
                 while lo + 1 < hi:
                     mid = lo + (hi - lo) // 2
-                    attempt = array("I", self.result)
+                    attempt = array("Q", self.result)
                     attempt[i] = mid
                     if consider(attempt):
                         hi = mid
