@@ -9,6 +9,38 @@ minithesis is always going to be self-contained in a single file
 and consist of < 1000 sloc (as measured by cloc). This doesn't
 count comments and I intend to comment on it extensively.
 
+
+=============
+PORTING NOTES
+=============
+
+minithesis supports roughly the following features, more or less
+in order of most to least important:
+
+1. Test case generation.
+2. Test case reduction ("shrinking")
+3. A small library of primitive possibilities (generators) and combinators.
+4. A Test case database for replay between runs.
+5. Targeted property-based testing
+6. A caching layer for mapping choice sequences to outcomes
+
+
+Anything that supports 1 and 2 is a reasonable good first porting
+goal. You'll probably want to port most of the possibilities library
+because it's easy and it helps you write tests, but don't worry
+too much about the specifics.
+
+The test case database is *very* useful and I strongly encourage
+you to support it, but if it's fiddly feel free to leave it out
+of a first pass.
+
+Targeted property-based testing is very much a nice to have. You
+probably don't need it, but it's a rare enough feature that supporting
+it gives you bragging rights and who doesn't love bragging rights?
+
+The caching layer you can skip. It's used more heavily in Hypothesis
+proper, but in minithesis you only really need it for shrinking
+performance, so it's mostly a nice to have.
 """
 
 
