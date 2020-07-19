@@ -24,4 +24,4 @@ so I doubt I'll come close to that (including comments, docstrings, etc. it migh
 * This probably doesn't work all that well - it's tolerably well tested, but nobody has ever used it for real and probably nobody ever will because why would they when Hypothesis exists?
 * Pull requests to improve clarity *extremely* welcome. It probably won't ever grow many features (I might implement the database at some point) though because you're not supposed to use it in anger.
 * I've used the (sadly defunct) Hypothesis-for-Ruby naming conventions because those are better than the Python ones because I actually put some thought into them.
-* Currently there is no generator library. I may add a few for illustrative purposes but I have no intention of adding anything like the full range of Hypothesis generators.
+* There is a fairly minimal generator library just to get you started but it's nothing resembling comprehensive and is unlikely to ever be.
