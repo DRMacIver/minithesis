@@ -1,6 +1,6 @@
 # Minithesis
 
-This is is an incredibly minimal implementation of the core idea of Hypothesis,
+This is is an incredibly minimal implementation of the core idea of [Hypothesis](https://github.com/HypothesisWorks/hypothesis),
 mostly intended for demonstration purposes to show someone how they might
 get the basics of it up and running.
 
