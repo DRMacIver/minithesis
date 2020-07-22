@@ -35,6 +35,24 @@ def test_finds_small_list(capsys):
     assert captured.out.strip() == "any(lists(integers(0, 10000))): [1001]"
 
 
+def test_reduces_additive_pairs(capsys):
+
+    with pytest.raises(AssertionError):
+
+        @run_test(database={}, max_examples=10000)
+        def _(test_case):
+            m = test_case.choice(1000)
+            n = test_case.choice(1000)
+            assert m + n <= 1000
+
+    captured = capsys.readouterr()
+
+    assert [c.strip() for c in captured.out.splitlines()] == [
+        "choice(1000): 1",
+        "choice(1000): 1000",
+    ]
+
+
 def test_reuses_results_from_the_database(tmpdir):
     db = DirectoryDB(tmpdir)
     count = 0

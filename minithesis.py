@@ -435,10 +435,11 @@ class TestingState(object):
                         self.best_scoring = relevant_info
 
         if test_case.status == Status.INTERESTING:
-            if self.result is None or sort_key(test_case.choices) < sort_key(
+            # Remove this assertion if you haven't implemented caching.
+            assert self.result is None or sort_key(test_case.choices) < sort_key(
                 self.result
-            ):
-                self.result = test_case.choices
+            )
+            self.result = test_case.choices
 
     def target(self):
         """If any test cases have had ``target()`` called on them, do a simple
@@ -531,6 +532,8 @@ class TestingState(object):
         cached = CachedTestFunction(self.test_function)
 
         def consider(choices):
+            if choices == self.result:
+                return True
             return cached(choices) == Status.INTERESTING
 
         assert consider(self.result)
@@ -563,7 +566,10 @@ class TestingState(object):
 
             # Now try replacing blocks of choices with zeroes
             k = 8
-            while k > 0:
+
+            # Note that unlike the above we skip k = 1 because we handle that in the
+            # next step.
+            while k > 1:
                 i = len(self.result) - k - 1
                 while i >= 0:
                     attempt = (
@@ -575,26 +581,77 @@ class TestingState(object):
                         i -= 1
                 k //= 2
 
+            def replace(values):
+                attempt = array("Q", self.result)
+                for i, v in values.items():
+                    attempt[i] = v
+                return consider(attempt)
+
             # Now try replacing each choice with a smaller value
-            # by doing a binary search.
+            # by doing a binary search. This will replace n with 0 or n - 1
+            # if possible, but will also more efficiently replace it with
+            # a smaller number than doing multiple subtractions would.
             i = len(self.result) - 1
             while i >= 0:
-                # We assume that if we could replace the choice with zero
-                # then we would have on the previous step. Strictly
-                # this needn't be true, but if it's not true then we're
-                # not at a fixed point and so it will be tried again on
-                # the next run through.
-                lo = 0
-                hi = self.result[i]
-                while lo + 1 < hi:
-                    mid = lo + (hi - lo) // 2
-                    attempt = array("Q", self.result)
-                    attempt[i] = mid
-                    if consider(attempt):
-                        hi = mid
-                    else:
-                        lo = mid
+                # Attempt to replace
+                bin_search_down(0, self.result[i], lambda v: replace({i: v}))
                 i -= 1
+
+            # NB from here on this is just showing off cool shrinker tricks and
+            # you probably don't need to worry about it and can skip these bits
+            # unless they're easy and you want bragging rights for how much
+            # better you are at shrinking than the local QuickCheck equivalent.
+
+            # Try sorting out of order ranges of choices.
+            k = 8
+            while k > 1:
+                for i in range(len(self.result) - k - 1, -1, -1):
+                    consider(
+                        self.result[:i]
+                        + array("Q", sorted(self.result[i : i + k]))
+                        + self.result[i + k :]
+                    )
+                k //= 2
+
+            # Try adjusting nearby pairs of integers by redistributing value
+            # between them.
+            for k in [2, 1]:
+                for i in range(len(self.result) - 1 - k, -1, -1):
+                    j = i + k
+                    # This check is necessary because the previous changes
+                    # might have shrunk the size of result, but also it's tedious
+                    # to write tests for this so I didn't.
+                    if j < len(self.result):  # pragma: no cover
+                        # Try swapping out of order pairs
+                        if self.result[i] > self.result[j]:
+                            replace({j: self.result[i], i: self.result[j]})
+                        if self.result[i] > 0:
+                            previous_i = self.result[i]
+                            previous_j = self.result[j]
+                            bin_search_down(
+                                0,
+                                previous_i,
+                                lambda v: replace(
+                                    {i: v, j: previous_j + (previous_i - v)}
+                                ),
+                            )
+
+
+def bin_search_down(lo, hi, f):
+    """Returns n in [lo, hi] such that f(n) is True.
+
+    f(hi) is assumed to be True, and if n > lo then
+    f(n - 1) is False.
+    """
+    if f(lo):
+        return lo
+    while lo + 1 < hi:
+        mid = lo + (hi - lo) // 2
+        if f(mid):
+            hi = mid
+        else:
+            lo = mid
+    return hi
 
 
 class DirectoryDB:
