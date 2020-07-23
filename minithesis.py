@@ -434,11 +434,9 @@ class TestingState(object):
                     if test_case.targeting_score > best:
                         self.best_scoring = relevant_info
 
-        if test_case.status == Status.INTERESTING:
-            # Remove this assertion if you haven't implemented caching.
-            assert self.result is None or sort_key(test_case.choices) < sort_key(
-                self.result
-            )
+        if test_case.status == Status.INTERESTING and (
+            self.result is None or sort_key(test_case.choices) < sort_key(self.result)
+        ):
             self.result = test_case.choices
 
     def target(self):

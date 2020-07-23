@@ -264,6 +264,24 @@ def test_can_draw_mixture():
         assert m != 1
 
 
+def test_target_and_reduce(capsys):
+    """This test is very hard to trigger without targeting,
+    and targeting will tend to overshoot the score, so we
+    will see multiple interesting test cases before
+    shrinking."""
+    with pytest.raises(AssertionError):
+
+        @run_test(database={})
+        def _(tc):
+            m = tc.choice(100000)
+            tc.target(m)
+            assert m <= 99900
+
+    captured = capsys.readouterr()
+
+    assert captured.out.strip() == "choice(100000): 99901"
+
+
 class ShouldFail(Exception):
     pass
 
