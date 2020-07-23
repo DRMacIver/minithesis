@@ -409,22 +409,20 @@ def test_give_minithesis_a_workout(data):
                     lines.append(" " * indent + f"tc.target({args[0]})")
                     recur(indent, *node[1].values())
                 elif method == "weighted":
-                    varcount += 1
-                    varname = f"n{varcount}"
-                    lines.append(" " * indent + f"{varname} = tc.weighted({args[0]})")
+                    cond = f"tc.waighted({args[0]})"
                     assert len(node[1]) > 0
                     if len(node[1]) == 2:
-                        lines.append(" " * indent + "if {varname}:")
+                        lines.append(" " * indent + "if {cond}:")
                         recur(indent + 4, node[1][True])
                         lines.append(" " * indent + "else:")
                         recur(indent + 4, node[1][False])
                     else:
                         if True in node[1]:
-                            lines.append(" " * indent + f"if {varname}:")
+                            lines.append(" " * indent + f"if {cond}:")
                             recur(indent + 4, node[1][True])
                         else:
                             assert False in node[1]
-                            lines.append(" " * indent + f"if not {varname}:")
+                            lines.append(" " * indent + f"if not {cond}:")
                             recur(indent + 4, node[1][False])
                 else:
                     varcount += 1
@@ -445,7 +443,7 @@ def test_give_minithesis_a_workout(data):
                         first = False
                         recur(indent + 4, v)
                     lines.append(" " * indent + "else:")
-                    lines.append(" " * (indent + 4) + "tc.mark_status(Status.INVALID)")
+                    lines.append(" " * (indent + 4) + "tc.reject()")
 
             recur(12, tree)
             return "\n".join(lines)
