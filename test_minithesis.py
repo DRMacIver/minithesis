@@ -205,6 +205,9 @@ def test_errors_when_using_frozen():
     with pytest.raises(Frozen):
         tc.choice(10)
 
+    with pytest.raises(Frozen):
+        tc.forced_choice(10)
+
 
 def test_errors_on_too_large_choice():
     tc = TC.for_choices([0])
@@ -314,6 +317,14 @@ def test_size_bounds_on_list():
     def _(tc):
         ls = tc.any(lists(integers(0, 10), min_size=1, max_size=3))
         assert 1 <= len(ls) <= 3
+
+
+def test_forced_choice_bounds():
+    with pytest.raises(ValueError):
+
+        @run_test(database={})
+        def _(tc):
+            tc.forced_choice(2 ** 64)
 
 
 class Failure(Exception):
