@@ -25,3 +25,13 @@ so I doubt I'll come close to that (including comments, docstrings, etc. it migh
 * Pull requests to improve clarity *extremely* welcome. It probably won't ever grow many features (I might implement the database at some point) though because you're not supposed to use it in anger.
 * I've used the (sadly defunct) Hypothesis-for-Ruby naming conventions because those are better than the Python ones because I actually put some thought into them.
 * There is a fairly minimal generator library just to get you started but it's nothing resembling comprehensive and is unlikely to ever be.
+
+
+## Minithesis Ports
+
+There are a number of ports of minithesis (:tada:). The following are the ones I'm aware of:
+
+* Martin Janiczek's Elm port, [elm-minithesis](https://github.com/Janiczek/elm-minithesis)
+* Jack Firth's racket port, [miniracksis](https://github.com/jackfirth/miniracksis/)
+
+If you write a port, please submit a pull request to add it to the list!
