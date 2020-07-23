@@ -166,10 +166,29 @@ class TestCase(object):
 
     def weighted(self, p):
         """Return True with probability ``p``."""
-        result = bool(self.__make_choice(1, lambda: int(self.random.random() <= p)))
+        if p <= 0:
+            result = self.forced_choice(0)
+        elif p >= 1:
+            result = self.forced_choice(1)
+        else:
+            result = bool(self.__make_choice(1, lambda: int(self.random.random() <= p)))
         if self.__should_print():
             print(f"weighted({p}): {result}")
         return result
+
+    def forced_choice(self, n):
+        """Inserts a fake choice into the choice sequence, as if
+        some call to choice() had returned ``n``. You almost never
+        need this, but sometimes it can be a useful hint to the
+        shrinker."""
+        if n.bit_length() > 64 or n < 0:
+            raise ValueError(f"Invalid choice {n}")
+        if self.status is not None:
+            raise Frozen()
+        if len(self.choices) >= self.max_size:
+            self.mark_status(Status.OVERRUN)
+        self.choices.append(n)
+        return n
 
     def reject(self):
         """Mark this test case as invalid."""
@@ -284,12 +303,19 @@ def integers(m, n):
     return Possibility(lambda tc: m + tc.choice(n - m), name=f"integers({m}, {n})")
 
 
-def lists(elements):
+def lists(elements, min_size=0, max_size=float("inf")):
     """Any lists whose elements are possible values from ``elements`` are possible."""
 
     def produce(test_case):
         result = []
-        while test_case.weighted(0.9):
+        while True:
+            if len(result) < min_size:
+                test_case.forced_choice(1)
+            elif len(result) + 1 >= max_size:
+                test_case.forced_choice(0)
+                break
+            elif not test_case.weighted(0.9):
+                break
             result.append(test_case.any(elements))
         return result
 

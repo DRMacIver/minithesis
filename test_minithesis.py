@@ -282,6 +282,38 @@ def test_target_and_reduce(capsys):
     assert captured.out.strip() == "choice(100000): 99901"
 
 
+def test_impossible_weighted():
+    with pytest.raises(Failure):
+
+        @run_test(database={})
+        def _(tc):
+            tc.choice(1)
+            for _ in range(10):
+                if tc.weighted(0.0):
+                    assert False
+            if tc.choice(1):
+                raise Failure()
+
+
+def test_guaranteed_weighted():
+    with pytest.raises(Failure):
+
+        @run_test(database={})
+        def _(tc):
+            if tc.weighted(1.0):
+                tc.choice(1)
+                raise Failure()
+            else:
+                assert False
+
+
+def test_size_bounds_on_list():
+    @run_test(database={})
+    def _(tc):
+        ls = tc.any(lists(integers(0, 10), min_size=1, max_size=3))
+        assert 1 <= len(ls) <= 3
+
+
 class Failure(Exception):
     pass
 
