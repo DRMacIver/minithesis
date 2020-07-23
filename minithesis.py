@@ -582,6 +582,12 @@ class TestingState(object):
             def replace(values):
                 attempt = array("Q", self.result)
                 for i, v in values.items():
+                    # The size of self.result can change during shrinking.
+                    # If that happens, stop attempting to make use of these
+                    # replacements because some other shrink pass is better
+                    # to run now.
+                    if i >= len(attempt):
+                        return False
                     attempt[i] = v
                 return consider(attempt)
 
@@ -623,7 +629,8 @@ class TestingState(object):
                         # Try swapping out of order pairs
                         if self.result[i] > self.result[j]:
                             replace({j: self.result[i], i: self.result[j]})
-                        if self.result[i] > 0:
+                        # j could be out of range if the previous swap succeeded.
+                        if j < len(self.result) and self.result[i] > 0:
                             previous_i = self.result[i]
                             previous_j = self.result[j]
                             bin_search_down(
