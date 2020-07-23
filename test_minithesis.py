@@ -2,7 +2,7 @@ from collections import defaultdict
 from random import Random
 
 import pytest
-from hypothesis import HealthCheck, given, reject, settings
+from hypothesis import HealthCheck, Phase, given, note, reject, settings
 from hypothesis import strategies as st
 
 from minithesis import (CachedTestFunction, DirectoryDB, Frozen, Possibility,
@@ -282,7 +282,7 @@ def test_target_and_reduce(capsys):
     assert captured.out.strip() == "choice(100000): 99901"
 
 
-class ShouldFail(Exception):
+class Failure(Exception):
     pass
 
 
@@ -294,7 +294,8 @@ class ShouldFail(Exception):
 )
 @given(st.data())
 def test_give_minithesis_a_workout(data):
-    rnd = data.draw(st.randoms(use_true_random=False))
+    seed = data.draw(st.integers(0, 1000))
+    rnd = Random(seed)
     max_examples = data.draw(st.integers(1, 500))
 
     method_call = st.one_of(
@@ -328,13 +329,82 @@ def test_give_minithesis_a_workout(data):
                 if node[0] is None:
                     node[0] = data.draw(method_call)
                 if node[0] == ("mark_status", Status.INTERESTING):
-                    raise ShouldFail()
+                    raise Failure()
                 name, *rest = node[0]
 
                 result = getattr(test_case, name)(*rest)
                 node = node[1][result]
 
-    except ShouldFail:
+    except Failure:
         pass
     except Unsatisfiable:
         reject()
+    except Exception as e:
+
+        @note
+        def tree_as_code():
+            """If the test fails, print out a test that will trigger that
+            failure rather than making me hand-edit it into something useful."""
+            lines = [
+                "with pytest.raises(Failure):",
+                f"    @run_test(max_examples=1000, database={{}}, random=Random({seed}))",
+                "    def _(tc):",
+            ]
+
+            varcount = 0
+
+            def recur(indent, node):
+                nonlocal varcount
+
+                method, *args = node[0]
+                if method == "mark_status":
+                    if args[0] == Status.INTERESTING:
+                        lines.append(" " * indent + "raise Failure()")
+                    else:
+                        lines.append(
+                            " " * indent + f"tc.mark_status(Status.{args[0].name})"
+                        )
+                elif method == "target":
+                    lines.append(" " * indent + f"tc.target({args[0]})")
+                elif method == "weighted":
+                    varcount += 1
+                    varname = f"n{varcount}"
+                    assert len(node[1]) > 0
+                    if len(node[1]) == 2:
+                        lines.append(" " * indent + "if {varname}:")
+                        recur(indent + 4, node[1][True])
+                        lines.append(" " * indent + "else:")
+                        recur(indent + 4, node[1][False])
+                    else:
+                        if True in node[1]:
+                            lines.append(" " * indent + "if {varname}:")
+                            recur(indent + 4, node[1][True])
+                        else:
+                            assert False in node[1]
+                            lines.append(" " * indent + "if not {varname}:")
+                            recur(indent + 4, node[1][False])
+                else:
+                    varcount += 1
+                    varname = f"n{varcount}"
+                    lines.append(
+                        " " * indent
+                        + f"{varname} = tc.{method}({', '.join(map(repr, args))})"
+                    )
+                    first = True
+                    for k, v in node[1].items():
+                        if v[0] == ("mark_status", Status.INVALID):
+                            continue
+                        lines.append(
+                            " " * indent
+                            + ("if" if first else "elif")
+                            + f" {varname} == {k}:"
+                        )
+                        first = False
+                        recur(indent + 4, v)
+                    lines.append(" " * indent + "else:")
+                    lines.append(" " * (indent + 4) + "tc.mark_status(Status.INVALID)")
+
+            recur(8, tree)
+            return "\n".join(lines)
+
+        raise e
