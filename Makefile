@@ -12,7 +12,7 @@ update-requirements: venv/installed
 
 .PHONY: test
 test: venv/installed
-	venv/bin/python -m coverage run --include=minithesis.py --branch -m pytest test_minithesis.py --ff --maxfail=1
+	venv/bin/python -m coverage run --include=minithesis.py --branch -m pytest test_minithesis.py --ff --maxfail=1 -m 'not hypothesis' --durations=100 --verbose
 	venv/bin/coverage report --show-missing --fail-under=100
 
 .PHONY: format
