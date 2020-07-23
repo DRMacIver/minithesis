@@ -296,7 +296,7 @@ class Failure(Exception):
 def test_give_minithesis_a_workout(data):
     seed = data.draw(st.integers(0, 1000))
     rnd = Random(seed)
-    max_examples = data.draw(st.integers(1, 500))
+    max_examples = 1
 
     method_call = st.one_of(
         st.tuples(
@@ -340,35 +340,43 @@ def test_give_minithesis_a_workout(data):
     except Unsatisfiable:
         reject()
     except Exception as e:
-
         @note
         def tree_as_code():
             """If the test fails, print out a test that will trigger that
             failure rather than making me hand-edit it into something useful."""
+
+            i = 1
+            while True:
+                test_name = f"test_failure_from_hypothesis_{i}"
+                if test_name not in globals():
+                    break
+                i += 1
+
             lines = [
-                "with pytest.raises(Failure):",
-                f"    @run_test(max_examples=1000, database={{}}, random=Random({seed}))",
-                "    def _(tc):",
+                f"def {test_name}():",
+                "    with pytest.raises(Failure):",
+                f"        @run_test(max_examples=1000, database={{}}, random=Random({seed}))",
+                "        def _(tc):",
             ]
 
             varcount = 0
 
             def recur(indent, node):
                 nonlocal varcount
-
+                
                 method, *args = node[0]
                 if method == "mark_status":
                     if args[0] == Status.INTERESTING:
                         lines.append(" " * indent + "raise Failure()")
                     else:
-                        lines.append(
-                            " " * indent + f"tc.mark_status(Status.{args[0].name})"
-                        )
+                        lines.append(" " * indent + f"tc.mark_status(Status.{args[0].name})")
                 elif method == "target":
                     lines.append(" " * indent + f"tc.target({args[0]})")
+                    recur(indent, *node[1].values())
                 elif method == "weighted":
                     varcount += 1
                     varname = f"n{varcount}"
+                    lines.append(" " * indent + f"{varname} = tc.weighted({args[0]})")
                     assert len(node[1]) > 0
                     if len(node[1]) == 2:
                         lines.append(" " * indent + "if {varname}:")
@@ -377,34 +385,67 @@ def test_give_minithesis_a_workout(data):
                         recur(indent + 4, node[1][False])
                     else:
                         if True in node[1]:
-                            lines.append(" " * indent + "if {varname}:")
+                            lines.append(" " * indent + f"if {varname}:")
                             recur(indent + 4, node[1][True])
                         else:
                             assert False in node[1]
-                            lines.append(" " * indent + "if not {varname}:")
+                            lines.append(" " * indent + f"if not {varname}:")
                             recur(indent + 4, node[1][False])
                 else:
                     varcount += 1
                     varname = f"n{varcount}"
-                    lines.append(
-                        " " * indent
-                        + f"{varname} = tc.{method}({', '.join(map(repr, args))})"
-                    )
+                    lines.append(" " * indent + f"{varname} = tc.{method}({', '.join(map(repr, args))})")
                     first = True
                     for k, v in node[1].items():
                         if v[0] == ("mark_status", Status.INVALID):
                             continue
-                        lines.append(
-                            " " * indent
-                            + ("if" if first else "elif")
-                            + f" {varname} == {k}:"
-                        )
+                        lines.append(" " * indent + ("if" if first else "elif") + f" {varname} == {k}:")
                         first = False
                         recur(indent + 4, v)
                     lines.append(" " * indent + "else:")
                     lines.append(" " * (indent + 4) + "tc.mark_status(Status.INVALID)")
-
-            recur(8, tree)
+            recur(12, tree)
             return "\n".join(lines)
-
         raise e
+
+
+def test_failure_from_hypothesis_1():
+    with pytest.raises(Failure):
+        @run_test(max_examples=1000, database={}, random=Random(100))
+        def _(tc):
+            n1 = tc.weighted(0.0)
+            if not n1:
+                n2 = tc.choice(511)
+                if n2 == 112:
+                    n3 = tc.choice(511)
+                    if n3 == 124:
+                        raise Failure()
+                    elif n3 == 93:
+                        raise Failure()
+                    else:
+                        tc.mark_status(Status.INVALID)
+                elif n2 == 93:
+                    raise Failure()
+                else:
+                    tc.mark_status(Status.INVALID)
+
+
+def test_failure_from_hypothesis_2():
+    with pytest.raises(Failure):
+        @run_test(max_examples=1000, database={}, random=Random(0))
+        def _(tc):
+            n1 = tc.choice(6)
+            if n1 == 6:
+                n2 = tc.weighted(0.0)
+                if not n2:
+                    raise Failure()
+            elif n1 == 4:
+                n3 = tc.choice(0)
+                if n3 == 0:
+                    raise Failure()
+                else:
+                    tc.mark_status(Status.INVALID)
+            elif n1 == 2:
+                raise Failure()
+            else:
+                tc.mark_status(Status.INVALID)
