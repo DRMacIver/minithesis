@@ -5,6 +5,7 @@ import pytest
 from hypothesis import HealthCheck, Phase, given, note, reject, settings
 from hypothesis import strategies as st
 
+import minithesis as mt
 from minithesis import (CachedTestFunction, DirectoryDB, Frozen, Possibility,
                         Status)
 from minithesis import TestCase as TC
@@ -94,7 +95,8 @@ def test_error_on_too_strict_precondition():
             test_case.reject()
 
 
-def test_error_on_unbounded_test_function():
+def test_error_on_unbounded_test_function(monkeypatch):
+    monkeypatch.setattr(mt, "BUFFER_SIZE", 10)
     with pytest.raises(Unsatisfiable):
 
         @run_test(max_examples=5)
