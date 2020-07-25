@@ -610,6 +610,11 @@ class TestingState(object):
             while k > 0:
                 i = len(self.result) - k - 1
                 while i >= 0:
+                    if i >= len(self.result):
+                        # Can happen if we successfully lowered
+                        # the value at i - 1
+                        i -= 1
+                        continue
                     attempt = self.result[:i] + self.result[i + k :]
                     assert len(attempt) < len(self.result)
                     if not consider(attempt):
