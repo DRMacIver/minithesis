@@ -472,7 +472,7 @@ class TestingState(object):
             return
 
         def adjust(i, step):
-            """Can we improve the score by changing choices[i] by step?"""
+            """Can we improve the score by changing choices[i] by ``step``?"""
             score, choices = self.best_scoring
             if choices[i] + step < 0 or choices[i].bit_length() >= 64:
                 return False
@@ -492,6 +492,8 @@ class TestingState(object):
             i = self.random.randrange(0, len(self.best_scoring[1]))
             sign = 0
             for k in [1, -1]:
+                if not self.should_keep_generating():
+                    return
                 if adjust(i, k):
                     sign = k
                     break
@@ -499,11 +501,11 @@ class TestingState(object):
                 continue
 
             k = 1
-            while adjust(i, sign * k):
+            while self.should_keep_generating() and adjust(i, sign * k):
                 k *= 2
 
             while k > 0:
-                while adjust(i, sign * k):
+                while self.should_keep_generating() and adjust(i, sign * k):
                     pass
                 k //= 2
 
