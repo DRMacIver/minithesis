@@ -36,6 +36,40 @@ def test_finds_small_list(capsys):
     assert captured.out.strip() == "any(lists(integers(0, 10000))): [1001]"
 
 
+@pytest.mark.parametrize("seed", range(10))
+def test_finds_small_list_even_with_bad_lists(capsys, seed):
+    """Minithesis can't really handle shrinking arbitrary
+    monadic bind, but length parameters are a common case
+    of monadic bind that it has a little bit of special
+    casing for. This test ensures that that special casing
+    works.
+
+    The problem is that if you generate a list by drawing
+    a length and then drawing that many elements, you can
+    end up with something like ``[1001, 0, 0]`` then
+    deleting those zeroes in the middle is a pain. minithesis
+    will solve this by first sorting those elements, so that
+    we have ``[0, 0, 1001]``, and then lowering the length
+    by two, turning it into ``[1001]`` as desired.
+    """
+
+    with pytest.raises(AssertionError):
+
+        @Possibility
+        def bad_list(test_case):
+            n = test_case.choice(10)
+            return [test_case.choice(10000) for _ in range(n)]
+
+        @run_test(database={}, random=Random(seed))
+        def _(test_case):
+            ls = test_case.any(bad_list)
+            assert sum(ls) <= 1000
+
+    captured = capsys.readouterr()
+
+    assert captured.out.strip() == "any(bad_list): [1001]"
+
+
 def test_reduces_additive_pairs(capsys):
 
     with pytest.raises(AssertionError):

@@ -585,6 +585,19 @@ class TestingState(object):
                     attempt = self.result[:i] + self.result[i + k :]
                     assert len(attempt) < len(self.result)
                     if not consider(attempt):
+                        # This fixes a common problem that occurs
+                        # when you have dependencies on some
+                        # length parameter. e.g. draw a number
+                        # between 0 and 10 and then draw that
+                        # many elements. This can't delete
+                        # everything that occurs that way, but
+                        # it can delete some things and often
+                        # will get us unstuck when nothing else
+                        # does.
+                        if i > 0 and attempt[i - 1] > 0:
+                            attempt[i - 1] -= 1
+                            if consider(attempt):
+                                i += 1
                         i -= 1
                 k //= 2
 
