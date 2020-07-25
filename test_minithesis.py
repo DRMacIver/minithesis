@@ -22,11 +22,12 @@ def list_of_integers(test_case):
     return result
 
 
-def test_finds_small_list(capsys):
+@pytest.mark.parametrize("seed", range(10))
+def test_finds_small_list(capsys, seed):
 
     with pytest.raises(AssertionError):
 
-        @run_test(database={})
+        @run_test(database={}, random=Random(seed))
         def _(test_case):
             ls = test_case.any(lists(integers(0, 10000)))
             assert sum(ls) <= 1000

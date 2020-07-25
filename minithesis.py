@@ -576,8 +576,36 @@ class TestingState(object):
             # so it's easier to make changes near the end and
             # deleting bits at the end may allow us to make
             # changes earlier on that we we'd have missed.
+            #
+            # Note that we do not restart the loop at the end
+            # when we find a successful shrink. This is because
+            # things we've already tried are less likely to work.
+            #
+            # If this guess is wrong, that's OK, this isn't a
+            # correctness problem, because if we made a successful
+            # reduction then we are not at a fixed point and
+            # will restart the loop at the end the next time
+            # round. In some cases this can result in performance
+            # issues, but the end result should still be fine.
 
-            # First try deleting each choice we made in chunks
+            # First try deleting each choice we made in chunks.
+            # We try longer chunks because this allows us to
+            # delete whole composite elements: e.g. deleting an
+            # element from a generated list requires us to delete
+            # both the choice of whether to include it and also
+            # the element itself, which may involve more than one
+            # choice. Some things will take more than 8 choices
+            # in the sequence. That's too bad, we may not be
+            # able to delete those. In Hypothesis proper we
+            # record the boundaries corresponding to ``any``
+            # calls so that we can try deleting those, but
+            # that's pretty high overhead and also a bunch of
+            # slightly annoying code that it's not worth porting.
+            #
+            # We could instead do a quadratic amount of work
+            # to try all boundaries, but in general we don't
+            # want to do that because even a shrunk test case
+            # can involve a relatively large number of choices.
             k = 8
             while k > 0:
                 i = len(self.result) - k - 1
@@ -601,24 +629,10 @@ class TestingState(object):
                         i -= 1
                 k //= 2
 
-            # Now try replacing blocks of choices with zeroes
-            k = 8
-
-            # Note that unlike the above we skip k = 1 because we handle that in the
-            # next step.
-            while k > 1:
-                i = len(self.result) - k - 1
-                while i >= 0:
-                    attempt = (
-                        self.result[:i] + array("Q", [0] * k) + self.result[i + k :]
-                    )
-                    if consider(attempt):
-                        i -= k
-                    else:
-                        i -= 1
-                k //= 2
-
             def replace(values):
+                """Attempts to replace some indices in the current
+                result with new values. Useful for some purely lexicographic
+                reductions that we are about to perform."""
                 attempt = array("Q", self.result)
                 for i, v in values.items():
                     # The size of self.result can change during shrinking.
@@ -629,6 +643,28 @@ class TestingState(object):
                         return False
                     attempt[i] = v
                 return consider(attempt)
+
+            # Now we try replacing blocks of choices with zeroes.
+            # Note that unlike the above we skip k = 1 because we
+            # handle that in the next step. Often (but not always)
+            # a block of all zeroes is the shortlex smallest value
+            # that a region can be.
+            k = 8
+
+            while k > 1:
+                i = len(self.result) - k
+                while i >= 0:
+                    if replace({j: 0 for j in range(i, i + k)}):
+                        # If we've succeeded then all of [i, i + k]
+                        # is zero so we adjust i so that the next region
+                        # does not overlap with this at all.
+                        i -= k
+                    else:
+                        # Otherwise we might still be able to zero some
+                        # of these values but not the last one, so we
+                        # just go back one.
+                        i -= 1
+                k //= 2
 
             # Now try replacing each choice with a smaller value
             # by doing a binary search. This will replace n with 0 or n - 1
@@ -645,7 +681,8 @@ class TestingState(object):
             # unless they're easy and you want bragging rights for how much
             # better you are at shrinking than the local QuickCheck equivalent.
 
-            # Try sorting out of order ranges of choices.
+            # Try sorting out of order ranges of choices, as ``sort(x) <= x``,
+            # so this is always a lexicographic reduction.
             k = 8
             while k > 1:
                 for i in range(len(self.result) - k - 1, -1, -1):
@@ -657,7 +694,8 @@ class TestingState(object):
                 k //= 2
 
             # Try adjusting nearby pairs of integers by redistributing value
-            # between them.
+            # between them. This is useful for tests that depend on the
+            # sum of some generated values.
             for k in [2, 1]:
                 for i in range(len(self.result) - 1 - k, -1, -1):
                     j = i + k
@@ -682,10 +720,15 @@ class TestingState(object):
 
 
 def bin_search_down(lo, hi, f):
-    """Returns n in [lo, hi] such that f(n) is True.
+    """Returns n in [lo, hi] such that f(n) is True,
+    where it is assumed and will not be checked that
+    f(hi) is True.
 
-    f(hi) is assumed to be True, and if n > lo then
-    f(n - 1) is False.
+    Will return ``lo`` if ``f(lo)`` is True, otherwise
+    the only guarantee that is made is that ``f(n - 1)``
+    is False and ``f(n)`` is True. In particular this
+    does *not* guarantee to find the smallest value,
+    only a locally minimal one.
     """
     if f(lo):
         return lo
