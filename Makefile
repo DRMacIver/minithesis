@@ -17,5 +17,5 @@ test: venv/installed
 
 .PHONY: format
 format: venv/installed
-	venv/bin/black *.py
 	venv/bin/isort *.py
+	venv/bin/black *.py

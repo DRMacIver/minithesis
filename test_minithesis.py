@@ -6,12 +6,19 @@ from hypothesis import HealthCheck, Phase, given, note, reject, settings
 from hypothesis import strategies as st
 
 import minithesis as mt
-from minithesis import (CachedTestFunction, DirectoryDB, Frozen, Possibility,
-                        Status)
+from minithesis import CachedTestFunction, DirectoryDB, Frozen, Possibility, Status
 from minithesis import TestCase as TC
 from minithesis import TestingState as State
-from minithesis import (Unsatisfiable, integers, just, lists, mix_of, nothing,
-                        run_test, tuples)
+from minithesis import (
+    Unsatisfiable,
+    integers,
+    just,
+    lists,
+    mix_of,
+    nothing,
+    run_test,
+    tuples,
+)
 
 
 @Possibility
