@@ -435,7 +435,7 @@ class Failure(Exception):
 def test_give_minithesis_a_workout(data):
     seed = data.draw(st.integers(0, 1000))
     rnd = Random(seed)
-    max_examples = 1
+    max_examples = data.draw(st.integers(1, 100))
 
     method_call = st.one_of(
         st.tuples(
@@ -443,8 +443,8 @@ def test_give_minithesis_a_workout(data):
             st.sampled_from((Status.INVALID, Status.VALID, Status.INTERESTING)),
         ),
         st.tuples(st.just("target"), st.floats(0.0, 1.0)),
-        st.tuples(st.just("weighted"), st.floats(0.0, 1.0)),
         st.tuples(st.just("choice"), st.integers(0, 1000)),
+        st.tuples(st.just("weighted"), st.floats(0.0, 1.0)),
     )
 
     def new_node():
@@ -453,31 +453,44 @@ def test_give_minithesis_a_workout(data):
     tree = new_node()
 
     database = {}
+    failed = False
+    call_count = 0
+    valid_count = 0
 
     try:
+        try:
 
-        @run_test(
-            max_examples=max_examples, random=rnd, database=database, quiet=True,
-        )
-        def test_function(test_case):
-            node = tree
-            depth = 0
+            @run_test(
+                max_examples=max_examples, random=rnd, database=database, quiet=True,
+            )
+            def test_function(test_case):
+                node = tree
+                depth = 0
+                nonlocal call_count, valid_count, failed
+                call_count += 1
 
-            while depth <= 5:
-                depth += 1
-                if node[0] is None:
-                    node[0] = data.draw(method_call)
-                if node[0] == ("mark_status", Status.INTERESTING):
-                    raise Failure()
-                name, *rest = node[0]
+                while True:
+                    depth += 1
+                    if node[0] is None:
+                        node[0] = data.draw(method_call)
+                    if node[0] == ("mark_status", Status.INTERESTING):
+                        failed = True
+                        raise Failure()
+                    if node[0] == ("mark_status", Status.VALID):
+                        valid_count += 1
+                    name, *rest = node[0]
 
-                result = getattr(test_case, name)(*rest)
-                node = node[1][result]
+                    result = getattr(test_case, name)(*rest)
+                    node = node[1][result]
 
-    except Failure:
-        pass
-    except Unsatisfiable:
-        reject()
+        except Failure:
+            failed = True
+        except Unsatisfiable:
+            reject()
+
+        if not failed:
+            assert valid_count <= max_examples
+            assert call_count <= max_examples * 10
     except Exception as e:
 
         @note
@@ -504,10 +517,18 @@ def test_give_minithesis_a_workout(data):
             def recur(indent, node):
                 nonlocal varcount
 
+                if node[0] is None:
+                    lines.append(" " * indent + "tc.reject()")
+                    return
+
                 method, *args = node[0]
                 if method == "mark_status":
                     if args[0] == Status.INTERESTING:
                         lines.append(" " * indent + "raise Failure()")
+                    elif args[0] == Status.VALID:
+                        lines.append(" " * indent + "return")
+                    elif args[0] == Status.INVALID:
+                        lines.append(" " * indent + "tc.reject()")
                     else:
                         lines.append(
                             " " * indent + f"tc.mark_status(Status.{args[0].name})"
@@ -516,7 +537,7 @@ def test_give_minithesis_a_workout(data):
                     lines.append(" " * indent + f"tc.target({args[0]})")
                     recur(indent, *node[1].values())
                 elif method == "weighted":
-                    cond = f"tc.waighted({args[0]})"
+                    cond = f"tc.weighted({args[0]})"
                     assert len(node[1]) > 0
                     if len(node[1]) == 2:
                         lines.append(" " * indent + "if {cond}:")
