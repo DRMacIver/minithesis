@@ -1,3 +1,12 @@
+# This file is part of Minithesis, which may be found at
+# https://github.com/DRMacIver/minithesis
+#
+# This work is copyright (C) 2020 David R. MacIver.
+#
+# This Source Code Form is subject to the terms of the Mozilla Public License,
+# v. 2.0. If a copy of the MPL was not distributed with this file, You can
+# obtain one at https://mozilla.org/MPL/2.0/.
+
 """
 This file implements a simple property-based testing library called
 minithesis. It's not really intended to be used as is, but is instead
