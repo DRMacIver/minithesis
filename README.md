@@ -33,5 +33,6 @@ There are a number of ports of minithesis (:tada:). The following are the ones I
 
 * Martin Janiczek's Elm port, [elm-minithesis](https://github.com/Janiczek/elm-minithesis)
 * Jack Firth's racket port, [miniracksis](https://github.com/jackfirth/miniracksis/)
+* Amanda Walker's Haskell port, [haskell-minithesis](https://github.com/AnOctopus/haskell-minithesis)
 
 If you write a port, please submit a pull request to add it to the list!
