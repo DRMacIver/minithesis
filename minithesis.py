@@ -68,7 +68,6 @@ from typing import (
     Generic,
     List,
     Mapping,
-    MutableSequence,
     NoReturn,
     Optional,
     Protocol,
@@ -79,8 +78,9 @@ from typing import (
 )
 
 
-T = TypeVar("T")
-S = TypeVar("S")
+T = TypeVar("T", covariant=True)
+S = TypeVar("S", covariant=True)
+U = TypeVar("U")  # Invariant
 
 
 class Database(Protocol):
@@ -271,7 +271,7 @@ class TestCase(object):
         """
         self.targeting_score = score
 
-    def any(self, possibility: Possibility[T]) -> T:
+    def any(self, possibility: Possibility[U]) -> U:
         """Return a possible value from ``possibility``."""
         try:
             self.depth += 1
@@ -368,14 +368,14 @@ def integers(m: int, n: int) -> Possibility[int]:
 
 
 def lists(
-    elements: Possibility[T],
+    elements: Possibility[U],
     min_size: int = 0,
     max_size: float = float("inf"),
-) -> Possibility[List[T]]:
+) -> Possibility[List[U]]:
     """Any lists whose elements are possible values from ``elements`` are possible."""
 
-    def produce(test_case: TestCase) -> List[T]:
-        result: List[T] = []
+    def produce(test_case: TestCase) -> List[U]:
+        result: List[U] = []
         while True:
             if len(result) < min_size:
                 test_case.forced_choice(1)
@@ -387,12 +387,12 @@ def lists(
             result.append(test_case.any(elements))
         return result
 
-    return Possibility[List[T]](produce, name=f"lists({elements.name})")
+    return Possibility[List[U]](produce, name=f"lists({elements.name})")
 
 
-def just(value: T) -> Possibility[T]:
+def just(value: U) -> Possibility[U]:
     """Only ``value`` is possible."""
-    return Possibility[T](lambda tc: value, name=f"just({value})")
+    return Possibility[U](lambda tc: value, name=f"just({value})")
 
 
 def nothing() -> Possibility[NoReturn]:
@@ -405,11 +405,11 @@ def nothing() -> Possibility[NoReturn]:
     return Possibility(produce)
 
 
-# XXX This signature requires PEP 646
-def mix_of(*possibilities: Possibility[Any]) -> Possibility[Any]:
+def mix_of(*possibilities: Possibility[T]) -> Possibility[T]:
     """Possible values can be any value possible for one of ``possibilities``."""
     if not possibilities:
-        return nothing()
+        # XXX Need a cast since NoReturn isn't a T (though perhaps it should be)
+        return cast(Possibility[T], nothing())
     return Possibility(
         lambda tc: tc.any(possibilities[tc.choice(len(possibilities) - 1)]),
         name="mix_of({', '.join(p.name for p in possibilities)})",
@@ -640,8 +640,7 @@ class TestingState(object):
         # not to work.
         cached = CachedTestFunction(self.test_function)
 
-        def consider(choices: Sequence[int]) -> bool:
-            # XXX This assumes choices and self.result have the same type
+        def consider(choices: array[int]) -> bool:
             if choices == self.result:
                 return True
             return cached(choices) == Status.INTERESTING
@@ -725,7 +724,7 @@ class TestingState(object):
                 result with new values. Useful for some purely lexicographic
                 reductions that we are about to perform."""
                 assert self.result is not None
-                attempt: MutableSequence[int] = array("Q", self.result)
+                attempt = array("Q", self.result)
                 for i, v in values.items():
                     # The size of self.result can change during shrinking.
                     # If that happens, stop attempting to make use of these
