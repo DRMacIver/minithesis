@@ -52,15 +52,54 @@ proper, but in minithesis you only really need it for shrinking
 performance, so it's mostly a nice to have.
 """
 
+from __future__ import annotations
+
 
 import hashlib
 import os
 from array import array
 from enum import IntEnum
 from random import Random
+from typing import (
+    cast,
+    Any,
+    Callable,
+    Dict,
+    Generic,
+    List,
+    Mapping,
+    NoReturn,
+    Optional,
+    Protocol,
+    Sequence,
+    Tuple,
+    TypeVar,
+    Union,
+)
 
 
-def run_test(max_examples=100, random=None, database=None, quiet=False):
+T = TypeVar("T", covariant=True)
+S = TypeVar("S", covariant=True)
+U = TypeVar("U")  # Invariant
+
+
+class Database(Protocol):
+    def __setitem__(self, key: str, value: bytes) -> None:
+        ...
+
+    def get(self, key: str) -> Optional[bytes]:
+        ...
+
+    def __delitem__(self, key: str) -> None:
+        ...
+
+
+def run_test(
+    max_examples: int = 100,
+    random: Optional[Random] = None,
+    database: Optional[Database] = None,
+    quiet: bool = False,
+) -> Callable[[Callable[[TestCase], None]], None]:
     """Decorator to run a test. Usage is:
 
     .. code-block: python
@@ -93,8 +132,8 @@ def run_test(max_examples=100, random=None, database=None, quiet=False):
     * quiet: Will not print anything on failure if True.
     """
 
-    def accept(test):
-        def mark_failures_interesting(test_case):
+    def accept(test: Callable[[TestCase], None]) -> None:
+        def mark_failures_interesting(test_case: TestCase) -> None:
             try:
                 test(test_case)
             except Exception:
@@ -109,7 +148,7 @@ def run_test(max_examples=100, random=None, database=None, quiet=False):
         if database is None:
             # If the database is not set, use a standard cache directory
             # location to persist examples.
-            db = DirectoryDB(".minithesis-cache")
+            db: Database = DirectoryDB(".minithesis-cache")
         else:
             db = database
 
@@ -147,7 +186,11 @@ class TestCase(object):
     of an underlying set of choices that produce possibilities."""
 
     @classmethod
-    def for_choices(cls, choices, print_results=False):
+    def for_choices(
+        cls,
+        choices: Sequence[int],
+        print_results: bool = False,
+    ) -> TestCase:
         """Returns a test case that makes this series of choices."""
         return TestCase(
             prefix=choices,
@@ -156,24 +199,32 @@ class TestCase(object):
             print_results=print_results,
         )
 
-    def __init__(self, prefix, random, max_size=float("inf"), print_results=False):
+    def __init__(
+        self,
+        prefix: Sequence[int],
+        random: Optional[Random],
+        max_size: float = float("inf"),
+        print_results: bool = False,
+    ):
         self.prefix = prefix
-        self.random = random
+        # XXX Need a cast because below we assume self.random is not None;
+        # it can only be None if max_size == len(prefix)
+        self.random: Random = cast(Random, random)
         self.max_size = max_size
-        self.choices = array("Q")
-        self.status = None
+        self.choices: array[int] = array("Q")
+        self.status: Optional[Status] = None
         self.print_results = print_results
         self.depth = 0
-        self.targeting_score = None
+        self.targeting_score: Optional[int] = None
 
-    def choice(self, n):
+    def choice(self, n: int) -> int:
         """Returns a number in the range [0, n]"""
         result = self.__make_choice(n, lambda: self.random.randint(0, n))
         if self.__should_print():
             print(f"choice({n}): {result}")
         return result
 
-    def weighted(self, p):
+    def weighted(self, p: float) -> int:
         """Return True with probability ``p``."""
         if p <= 0:
             result = self.forced_choice(0)
@@ -185,7 +236,7 @@ class TestCase(object):
             print(f"weighted({p}): {result}")
         return result
 
-    def forced_choice(self, n):
+    def forced_choice(self, n: int) -> int:
         """Inserts a fake choice into the choice sequence, as if
         some call to choice() had returned ``n``. You almost never
         need this, but sometimes it can be a useful hint to the
@@ -199,17 +250,17 @@ class TestCase(object):
         self.choices.append(n)
         return n
 
-    def reject(self):
+    def reject(self) -> NoReturn:
         """Mark this test case as invalid."""
         self.mark_status(Status.INVALID)
 
-    def assume(self, precondition):
+    def assume(self, precondition: bool) -> None:
         """If this precondition is not met, abort the test and
         mark this test case as invalid."""
         if not precondition:
             self.reject()
 
-    def target(self, score):
+    def target(self, score: int) -> None:
         """Set a score to maximize. Multiple calls to this function
         will override previous ones.
 
@@ -220,7 +271,7 @@ class TestCase(object):
         """
         self.targeting_score = score
 
-    def any(self, possibility):
+    def any(self, possibility: Possibility[U]) -> U:
         """Return a possible value from ``possibility``."""
         try:
             self.depth += 1
@@ -232,17 +283,17 @@ class TestCase(object):
             print(f"any({possibility}): {result}")
         return result
 
-    def mark_status(self, status):
+    def mark_status(self, status: Status) -> NoReturn:
         """Set the status and raise StopTest."""
         if self.status is not None:
             raise Frozen()
         self.status = status
         raise StopTest()
 
-    def __should_print(self):
+    def __should_print(self) -> bool:
         return self.print_results and self.depth == 0
 
-    def __make_choice(self, n, rnd_method):
+    def __make_choice(self, n: int, rnd_method: Callable[[], int]) -> int:
         """Make a choice in [0, n], by calling rnd_method if
         randomness is needed."""
         if n.bit_length() > 64 or n < 0:
@@ -261,21 +312,21 @@ class TestCase(object):
         return result
 
 
-class Possibility(object):
+class Possibility(Generic[T]):
     """Represents some range of values that might be used in
     a test, that can be requested from a ``TestCase``.
 
     Pass one of these to TestCase.any to get a concrete value.
     """
 
-    def __init__(self, produce, name=None):
+    def __init__(self, produce: Callable[[TestCase], T], name: Optional[str] = None):
         self.produce = produce
         self.name = produce.__name__ if name is None else name
 
-    def __repr__(self):
+    def __repr__(self) -> str:
         return self.name
 
-    def map(self, f):
+    def map(self, f: Callable[[T], S]) -> Possibility[S]:
         """Returns a ``Possibility`` where values come from
         applying ``f`` to some possible value for ``self``."""
         return Possibility(
@@ -283,40 +334,48 @@ class Possibility(object):
             name=f"{self.name}.map({f.__name__})",
         )
 
-    def bind(self, f):
+    def bind(self, f: Callable[[T], Possibility[S]]) -> Possibility[S]:
         """Returns a ``Possibility`` where values come from
         applying ``f`` (which should return a new ``Possibility``
         to some possible value for ``self`` then returning a possible
         value from that."""
-        return Possibility(
-            lambda test_case: test_case.any(f(test_case.any(self))),
+
+        def produce(test_case: TestCase) -> S:
+            return test_case.any(f(test_case.any(self)))
+
+        return Possibility[S](
+            produce,
             name=f"{self.name}.bind({f.__name__})",
         )
 
-    def satisfying(self, f):
+    def satisfying(self, f: Callable[[T], bool]) -> Possibility[T]:
         """Returns a ``Possibility`` whose values are any possible
         value of ``self`` for which ``f`` returns True."""
 
-        def produce(test_case):
+        def produce(test_case: TestCase) -> T:
             for _ in range(3):
                 candidate = test_case.any(self)
                 if f(candidate):
                     return candidate
             test_case.reject()
 
-        return Possibility(produce, name=f"{self.name}.select({f.__name__})")
+        return Possibility[T](produce, name=f"{self.name}.select({f.__name__})")
 
 
-def integers(m, n):
+def integers(m: int, n: int) -> Possibility[int]:
     """Any integer in the range [m, n] is possible"""
     return Possibility(lambda tc: m + tc.choice(n - m), name=f"integers({m}, {n})")
 
 
-def lists(elements, min_size=0, max_size=float("inf")):
+def lists(
+    elements: Possibility[U],
+    min_size: int = 0,
+    max_size: float = float("inf"),
+) -> Possibility[List[U]]:
     """Any lists whose elements are possible values from ``elements`` are possible."""
 
-    def produce(test_case):
-        result = []
+    def produce(test_case: TestCase) -> List[U]:
+        result: List[U] = []
         while True:
             if len(result) < min_size:
                 test_case.forced_choice(1)
@@ -328,31 +387,37 @@ def lists(elements, min_size=0, max_size=float("inf")):
             result.append(test_case.any(elements))
         return result
 
-    return Possibility(produce, name=f"lists({elements.name})")
+    return Possibility[List[U]](produce, name=f"lists({elements.name})")
 
 
-def just(value):
+def just(value: U) -> Possibility[U]:
     """Only ``value`` is possible."""
-    return Possibility(lambda tc: value, name=f"just({value})")
+    return Possibility[U](lambda tc: value, name=f"just({value})")
 
 
-def nothing():
+def nothing() -> Possibility[NoReturn]:
     """No possible values. i.e. Any call to ``any`` will reject
     the test case."""
-    return Possibility(lambda tc: tc.reject())
+
+    def produce(tc: TestCase) -> NoReturn:
+        tc.reject()
+
+    return Possibility(produce)
 
 
-def mix_of(*possibilities):
+def mix_of(*possibilities: Possibility[T]) -> Possibility[T]:
     """Possible values can be any value possible for one of ``possibilities``."""
     if not possibilities:
-        return nothing()
+        # XXX Need a cast since NoReturn isn't a T (though perhaps it should be)
+        return cast(Possibility[T], nothing())
     return Possibility(
         lambda tc: tc.any(possibilities[tc.choice(len(possibilities) - 1)]),
         name="mix_of({', '.join(p.name for p in possibilities)})",
     )
 
 
-def tuples(*possibilities):
+# XXX This signature requires PEP 646
+def tuples(*possibilities: Possibility[Any]) -> Possibility[Any]:
     """Any tuple t of of length len(possibilities) such that t[i] is possible
     for possibilities[i] is possible."""
     return Possibility(
@@ -367,7 +432,7 @@ def tuples(*possibilities):
 BUFFER_SIZE = 8 * 1024
 
 
-def sort_key(choices):
+def sort_key(choices: Sequence[int]) -> Tuple[int, Sequence[int]]:
     """Returns a key that can be used for the shrinking order
     of test cases."""
     return (len(choices), choices)
@@ -385,7 +450,7 @@ class CachedTestFunction(object):
     somewhat increased shrinking time.
     """
 
-    def __init__(self, test_function):
+    def __init__(self, test_function: Callable[[TestCase], None]):
         self.test_function = test_function
 
         # Tree nodes are either a point at which a choice occurs
@@ -398,10 +463,12 @@ class CachedTestFunction(object):
         # a Patricia trie, which implements long non-branching
         # paths as an array inline. For simplicity we don't
         # do that here.
-        self.tree = {}
+        # XXX The type of self.tree is recursive
+        self.tree: Dict[int, Union[Status, Dict[int, Any]]] = {}
 
-    def __call__(self, choices):
-        node = self.tree
+    def __call__(self, choices: Sequence[int]) -> Status:
+        # XXX The type of node is problematic
+        node: Any = self.tree
         try:
             for c in choices:
                 node = node[c]
@@ -437,17 +504,22 @@ class CachedTestFunction(object):
 
 
 class TestingState(object):
-    def __init__(self, random, test_function, max_examples):
+    def __init__(
+        self,
+        random: Random,
+        test_function: Callable[[TestCase], None],
+        max_examples: int,
+    ):
         self.random = random
         self.max_examples = max_examples
         self.__test_function = test_function
         self.valid_test_cases = 0
         self.calls = 0
-        self.result = None
-        self.best_scoring = None
+        self.result: Optional[array[int]] = None
+        self.best_scoring: Optional[Tuple[int, Sequence[int]]] = None
         self.test_is_trivial = False
 
-    def test_function(self, test_case):
+    def test_function(self, test_case: TestCase) -> None:
         try:
             self.__test_function(test_case)
         except StopTest:
@@ -465,7 +537,7 @@ class TestingState(object):
                 if self.best_scoring is None:
                     self.best_scoring = relevant_info
                 else:
-                    best, existing_choices = self.best_scoring
+                    best, _ = self.best_scoring
                     if test_case.targeting_score > best:
                         self.best_scoring = relevant_info
 
@@ -474,14 +546,15 @@ class TestingState(object):
         ):
             self.result = test_case.choices
 
-    def target(self):
+    def target(self) -> None:
         """If any test cases have had ``target()`` called on them, do a simple
         hill climbing algorithm to attempt to optimise that target score."""
         if self.result is not None or self.best_scoring is None:
             return
 
-        def adjust(i, step):
+        def adjust(i: int, step: int) -> bool:
             """Can we improve the score by changing choices[i] by ``step``?"""
+            assert self.best_scoring is not None
             score, choices = self.best_scoring
             if choices[i] + step < 0 or choices[i].bit_length() >= 64:
                 return False
@@ -491,6 +564,7 @@ class TestingState(object):
                 prefix=attempt, random=self.random, max_size=BUFFER_SIZE
             )
             self.test_function(test_case)
+            assert test_case.status is not None
             return (
                 test_case.status >= Status.VALID
                 and test_case.targeting_score is not None
@@ -518,12 +592,12 @@ class TestingState(object):
                     pass
                 k //= 2
 
-    def run(self):
+    def run(self) -> None:
         self.generate()
         self.target()
         self.shrink()
 
-    def should_keep_generating(self):
+    def should_keep_generating(self) -> bool:
         return (
             not self.test_is_trivial
             and self.result is None
@@ -536,7 +610,7 @@ class TestingState(object):
             self.calls < self.max_examples * 10
         )
 
-    def generate(self):
+    def generate(self) -> None:
         """Run random generation until either we have found an interesting
         test case or hit the limit of how many test cases we should
         evaluate."""
@@ -547,7 +621,7 @@ class TestingState(object):
                 TestCase(prefix=(), random=self.random, max_size=BUFFER_SIZE)
             )
 
-    def shrink(self):
+    def shrink(self) -> None:
         """If we have found an interesting example, try shrinking it
         so that the choice sequence leading to our best example is
         shortlex smaller than the one we originally found. This improves
@@ -566,7 +640,7 @@ class TestingState(object):
         # not to work.
         cached = CachedTestFunction(self.test_function)
 
-        def consider(choices):
+        def consider(choices: array[int]) -> bool:
             if choices == self.result:
                 return True
             return cached(choices) == Status.INTERESTING
@@ -645,10 +719,11 @@ class TestingState(object):
                         i -= 1
                 k //= 2
 
-            def replace(values):
+            def replace(values: Mapping[int, int]) -> bool:
                 """Attempts to replace some indices in the current
                 result with new values. Useful for some purely lexicographic
                 reductions that we are about to perform."""
+                assert self.result is not None
                 attempt = array("Q", self.result)
                 for i, v in values.items():
                     # The size of self.result can change during shrinking.
@@ -735,7 +810,7 @@ class TestingState(object):
                             )
 
 
-def bin_search_down(lo, hi, f):
+def bin_search_down(lo: int, hi: int, f: Callable[[int], bool]) -> int:
     """Returns n in [lo, hi] such that f(n) is True,
     where it is assumed and will not be checked that
     f(hi) is True.
@@ -761,32 +836,32 @@ class DirectoryDB:
     """A very basic key/value store that just uses a file system
     directory to store values. You absolutely don't have to copy this
     and should feel free to use a more reasonable key/value store
-    if you hvae easy access to one."""
+    if you have easy access to one."""
 
-    def __init__(self, directory):
+    def __init__(self, directory: str):
         self.directory = directory
         try:
             os.mkdir(directory)
         except FileExistsError:
             pass
 
-    def __to_file(self, key):
+    def __to_file(self, key: str) -> str:
         return os.path.join(
             self.directory, hashlib.sha1(key.encode("utf-8")).hexdigest()[:10]
         )
 
-    def __setitem__(self, key, value):
+    def __setitem__(self, key: str, value: bytes) -> None:
         with open(self.__to_file(key), "wb") as o:
             o.write(value)
 
-    def get(self, key):
+    def get(self, key: str) -> Optional[bytes]:
         f = self.__to_file(key)
         if not os.path.exists(f):
             return None
         with open(f, "rb") as i:
             return i.read()
 
-    def __delitem__(self, key):
+    def __delitem__(self, key: str) -> None:
         try:
             os.unlink(self.__to_file(key))
         except FileNotFoundError:
