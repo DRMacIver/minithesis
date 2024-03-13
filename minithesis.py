@@ -679,10 +679,6 @@ class TestingState(object):
             self.shrink_remove(consider)
 
             # Now we try replacing blocks of choices with zeroes.
-            # Note that unlike the above we skip k = 1 because we
-            # handle that in the next step. Often (but not always)
-            # a block of all zeroes is the shortlex smallest value
-            # that a region can be.
             self.result = shrink_zeroes(self.result, consider)
 
             # Now try replacing each choice with a smaller value
@@ -776,7 +772,10 @@ class TestingState(object):
                     # the value at removal_index - 1
                     removal_index -= 1
                     continue
-                attempt = self.result[:removal_index] + self.result[removal_index + n_to_remove:]
+                attempt = (
+                    self.result[:removal_index]
+                    + self.result[removal_index + n_to_remove :]
+                )
                 assert len(attempt) < len(self.result)
                 if not consider(attempt):
                     # If we have dependencies on some length
@@ -801,12 +800,20 @@ class TestingState(object):
 
 
 def shrink_zeroes(current: array[int], test: InterestTest) -> array[int]:
-    sizes_to_try = [8, 4, 2, 1]
-    for size in sizes_to_try:
+    # Try zero-ing out sections.
+    # Note that we skip a block of size 1 because that will
+    # be taken care of by a pass that tries lower values.
+    # Often (but not always), a block of all zeroes is the
+    # shortlex smallest value that a region can be.
+    for size in [8, 4, 2]:
         i = len(current) - size
         while i >= 0:
             # Zero out section starting at i
-            attempt = current[:i] + array("Q", (0 for _ in range(size))) + current[i + size:]
+            attempt = (
+                current[:i]
+                + array("Q", (0 for _ in range(size)))
+                + current[i + size :]
+            )
 
             if test(attempt):
                 current = attempt
