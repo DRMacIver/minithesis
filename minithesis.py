@@ -676,53 +676,17 @@ class TestingState(object):
             # First try deleting each choice we made in chunks.
             self.shrink_remove(consider)
 
-            def replace(values: Mapping[int, int]) -> bool:
-                """Attempts to replace some indices in the current
-                result with new values. Useful for some purely lexicographic
-                reductions that we are about to perform."""
-                assert self.result is not None
-                attempt = array("Q", self.result)
-                for i, v in values.items():
-                    # The size of self.result can change during shrinking.
-                    # If that happens, stop attempting to make use of these
-                    # replacements because some other shrink pass is better
-                    # to run now.
-                    if i >= len(attempt):
-                        return False
-                    attempt[i] = v
-                return consider(attempt)
-
             # Now we try replacing blocks of choices with zeroes.
-            # Note that unlike the above we skip k = 1 because we
-            # handle that in the next step. Often (but not always)
-            # a block of all zeroes is the shortlex smallest value
-            # that a region can be.
-            k = 8
-
-            while k > 1:
-                i = len(self.result) - k
-                while i >= 0:
-                    if replace({j: 0 for j in range(i, i + k)}):
-                        # If we've succeeded then all of [i, i + k]
-                        # is zero so we adjust i so that the next region
-                        # does not overlap with this at all.
-                        i -= k
-                    else:
-                        # Otherwise we might still be able to zero some
-                        # of these values but not the last one, so we
-                        # just go back one.
-                        i -= 1
-                k //= 2
+            self.result = shrink_zeroes(self.result, consider)
 
             # Now try replacing each choice with a smaller value
             # by doing a binary search. This will replace n with 0 or n - 1
             # if possible, but will also more efficiently replace it with
             # a smaller number than doing multiple subtractions would.
-            i = len(self.result) - 1
-            while i >= 0:
-                # Attempt to replace
-                bin_search_down(0, self.result[i], lambda v: replace({i: v}))
-                i -= 1
+            for i in reversed(range(len(self.result))):
+                bin_search_down(
+                    0, self.result[i], lambda v: replace(self.result, {i: v}, consider)
+                )
 
             # NB from here on this is just showing off cool shrinker tricks and
             # you probably don't need to worry about it and can skip these bits
@@ -753,7 +717,11 @@ class TestingState(object):
                     if j < len(self.result):  # pragma: no cover
                         # Try swapping out of order pairs
                         if self.result[i] > self.result[j]:
-                            replace({j: self.result[i], i: self.result[j]})
+                            replace(
+                                self.result,
+                                {j: self.result[i], i: self.result[j]},
+                                consider,
+                            )
                         # j could be out of range if the previous swap succeeded.
                         if j < len(self.result) and self.result[i] > 0:
                             previous_i = self.result[i]
@@ -762,7 +730,9 @@ class TestingState(object):
                                 0,
                                 previous_i,
                                 lambda v: replace(
-                                    {i: v, j: previous_j + (previous_i - v)}
+                                    self.result,
+                                    {i: v, j: previous_j + (previous_i - v)},
+                                    consider,
                                 ),
                             )
 
@@ -793,7 +763,10 @@ class TestingState(object):
                     # the value at removal_index - 1
                     removal_index -= 1
                     continue
-                attempt = self.result[:removal_index] + self.result[removal_index + n_to_remove:]
+                attempt = (
+                    self.result[:removal_index]
+                    + self.result[removal_index + n_to_remove :]
+                )
                 assert len(attempt) < len(self.result)
                 if not consider(attempt):
                     # If we have dependencies on some length
@@ -815,6 +788,53 @@ class TestingState(object):
                         if consider(attempt):
                             continue
                     removal_index -= 1
+
+
+def replace(
+    current: array[int],
+    values: Mapping[int, int],
+    is_interesting: Callable[[array[int]], bool],
+) -> bool:
+    """Attempts to replace some indices in the current
+    result with new values. Useful for some purely lexicographic
+    reductions that we are about to perform."""
+    assert current is not None
+    attempt = array("Q", current)
+    for i, v in values.items():
+        # The size of self.result can change during shrinking.
+        # If that happens, stop attempting to make use of these
+        # replacements because some other shrink pass is better
+        # to run now.
+        if i >= len(attempt):
+            return False
+        attempt[i] = v
+    return is_interesting(attempt)
+
+
+def shrink_zeroes(
+    attempt: array[int], is_interesting: Callable[[array[int]], bool]
+) -> array[int]:
+    # Try replacing blocks with zeroes
+    # Note that unlike the above we skip k = 1 because we
+    # handle that in the next step. Often (but not always)
+    # a block of all zeroes is the shortlex smallest value
+    # that a region can be.
+    size = 8
+    while size > 1:
+        i = len(attempt) - size
+        while i >= 0:
+            if replace(attempt, {j: 0 for j in range(i, i + size)}, is_interesting):
+                # If we've succeeded then all of [i, i + size]
+                # is zero so we adjust i so that the next region
+                # does not overlap with this at all.
+                i -= size
+            else:
+                # Otherwise we might still be able to zero some
+                # of these values but not the last one, so we
+                # just go back one.
+                i -= 1
+        size //= 2
+    return attempt
 
 
 def bin_search_down(lo: int, hi: int, f: Callable[[int], bool]) -> int:
