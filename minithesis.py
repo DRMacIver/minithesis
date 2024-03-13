@@ -674,50 +674,7 @@ class TestingState(object):
             # issues, but the end result should still be fine.
 
             # First try deleting each choice we made in chunks.
-            # We try longer chunks because this allows us to
-            # delete whole composite elements: e.g. deleting an
-            # element from a generated list requires us to delete
-            # both the choice of whether to include it and also
-            # the element itself, which may involve more than one
-            # choice. Some things will take more than 8 choices
-            # in the sequence. That's too bad, we may not be
-            # able to delete those. In Hypothesis proper we
-            # record the boundaries corresponding to ``any``
-            # calls so that we can try deleting those, but
-            # that's pretty high overhead and also a bunch of
-            # slightly annoying code that it's not worth porting.
-            #
-            # We could instead do a quadratic amount of work
-            # to try all boundaries, but in general we don't
-            # want to do that because even a shrunk test case
-            # can involve a relatively large number of choices.
-            k = 8
-            while k > 0:
-                i = len(self.result) - k - 1
-                while i >= 0:
-                    if i >= len(self.result):
-                        # Can happen if we successfully lowered
-                        # the value at i - 1
-                        i -= 1
-                        continue
-                    attempt = self.result[:i] + self.result[i + k :]
-                    assert len(attempt) < len(self.result)
-                    if not consider(attempt):
-                        # This fixes a common problem that occurs
-                        # when you have dependencies on some
-                        # length parameter. e.g. draw a number
-                        # between 0 and 10 and then draw that
-                        # many elements. This can't delete
-                        # everything that occurs that way, but
-                        # it can delete some things and often
-                        # will get us unstuck when nothing else
-                        # does.
-                        if i > 0 and attempt[i - 1] > 0:
-                            attempt[i - 1] -= 1
-                            if consider(attempt):
-                                i += 1
-                        i -= 1
-                k //= 2
+            self.shrink_remove(consider)
 
             def replace(values: Mapping[int, int]) -> bool:
                 """Attempts to replace some indices in the current
@@ -808,6 +765,56 @@ class TestingState(object):
                                     {i: v, j: previous_j + (previous_i - v)}
                                 ),
                             )
+
+    def shrink_remove(self, consider):
+        # Try removing chunks, starting from the end.
+        # We try longer chunks because this allows us to
+        # delete whole composite elements: e.g. deleting an
+        # element from a generated list requires us to delete
+        # both the choice of whether to include it and also
+        # the element itself, which may involve more than one
+        # choice. Some things will take more than 8 choices
+        # in the sequence. That's too bad, we may not be
+        # able to delete those. In Hypothesis proper we
+        # record the boundaries corresponding to ``any``
+        # calls so that we can try deleting those, but
+        # that's pretty high overhead and also a bunch of
+        # slightly annoying code that it's not worth porting.
+        #
+        # We could instead do a quadratic amount of work
+        # to try all boundaries, but in general we don't
+        # want to do that because even a shrunk test case
+        # can involve a relatively large number of choices.
+        for n_to_remove in range(8, 0, -1):
+            removal_index = len(self.result) - n_to_remove - 1
+            while removal_index >= 0:
+                if removal_index >= len(self.result):
+                    # Can happen if we successfully lowered
+                    # the value at removal_index - 1
+                    removal_index -= 1
+                    continue
+                attempt = self.result[:removal_index] + self.result[removal_index + n_to_remove:]
+                assert len(attempt) < len(self.result)
+                if not consider(attempt):
+                    # If we have dependencies on some length
+                    # parameter, e.g. draw a number between
+                    # 0 and 10 and then draw that many
+                    # elements, shrinking often gets stuck
+                    # because the decision to add many
+                    # elements was made early in the chain.
+                    # We check if the element just
+                    # prior to our removal could be a length
+                    # and try decreasing it.
+                    # This can't delete everything that occurs
+                    # as described, but it can delete some
+                    # things and often will get us unstuck
+                    # when nothing else does.
+                    if removal_index > 0 and attempt[removal_index - 1] > 0:
+                        attempt[removal_index - 1] -= 1
+                        # If successful, retry the removal pass
+                        if consider(attempt):
+                            continue
+                    removal_index -= 1
 
 
 def bin_search_down(lo: int, hi: int, f: Callable[[int], bool]) -> int:
