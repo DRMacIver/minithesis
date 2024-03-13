@@ -682,20 +682,8 @@ class TestingState(object):
             self.result = shrink_zeroes(self.result, consider)
 
             # Now try replacing each choice with a smaller value
-            # by doing a binary search. This will replace n with 0 or n - 1
-            # if possible, but will also more efficiently replace it with
-            # a smaller number than doing multiple subtractions would.
-            i = len(self.result) - 1
-            while i >= 0:
-                # Attempt to replace
-                bin_search_down(
-                    0,
-                    self.result[i],
-                    lambda v: is_interesting_with_replacement(
-                        self.result, {i: v}, consider
-                    ),
-                )
-                i -= 1
+            self.result = shrink_lower(self.result, consider)
+
 
             # NB from here on this is just showing off cool shrinker tricks and
             # you probably don't need to worry about it and can skip these bits
@@ -810,9 +798,7 @@ def shrink_zeroes(current: array[int], test: InterestTest) -> array[int]:
         while i >= 0:
             # Zero out section starting at i
             attempt = (
-                current[:i]
-                + array("Q", (0 for _ in range(size)))
-                + current[i + size :]
+                current[:i] + array("Q", (0 for _ in range(size))) + current[i + size :]
             )
 
             if test(attempt):
@@ -826,6 +812,20 @@ def shrink_zeroes(current: array[int], test: InterestTest) -> array[int]:
                 # of these values but not the last one, so we
                 # just go back one.
                 i -= 1
+    return current
+
+
+def shrink_lower(current: array[int], is_interesting: InterestTest) -> array[int]:
+    # Try replacing each choice with a smaller value
+    # by doing a binary search. This will replace n with 0 or n - 1
+    # if possible, but will also more efficiently replace it with
+    # a smaller number than doing multiple subtractions would.
+    for i in reversed(range(len(current))):
+        current[i] = bin_search_down(
+            0,
+            current[i],
+            lambda v: is_interesting_with_replacement(current, {i: v}, is_interesting),
+        )
     return current
 
 
