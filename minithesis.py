@@ -684,7 +684,6 @@ class TestingState(object):
             # Now try replacing each choice with a smaller value
             self.result = shrink_lower(self.result, consider)
 
-
             # NB from here on this is just showing off cool shrinker tricks and
             # you probably don't need to worry about it and can skip these bits
             # unless they're easy and you want bragging rights for how much
@@ -692,15 +691,7 @@ class TestingState(object):
 
             # Try sorting out of order ranges of choices, as ``sort(x) <= x``,
             # so this is always a lexicographic reduction.
-            k = 8
-            while k > 1:
-                for i in range(len(self.result) - k - 1, -1, -1):
-                    consider(
-                        self.result[:i]
-                        + array("Q", sorted(self.result[i : i + k]))
-                        + self.result[i + k :]
-                    )
-                k //= 2
+            self.result = shrink_sort(self.result, consider)
 
             # Try adjusting nearby pairs of integers by redistributing value
             # between them. This is useful for tests that depend on the
@@ -826,6 +817,21 @@ def shrink_lower(current: array[int], is_interesting: InterestTest) -> array[int
             current[i],
             lambda v: is_interesting_with_replacement(current, {i: v}, is_interesting),
         )
+    return current
+
+
+def shrink_sort(current: array[int], is_interesting: InterestTest) -> array[int]:
+    # Try sorting out of order ranges of choices, as ``sort(x) <= x``,
+    # so this is always a lexicographic reduction.
+    for size in [8, 4, 2]:
+        for i in reversed(range(len(current) - size)):
+            attempt = (
+                current[:i]
+                + array("Q", sorted(current[i : i + size]))
+                + current[i + size :]
+            )
+            if is_interesting(attempt):
+                current = attempt
     return current
 
 
