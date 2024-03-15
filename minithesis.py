@@ -118,7 +118,7 @@ def run_test(
     that fails.
 
     The test will be run immediately, unlike in Hypothesis where
-    @given wraps a function to expose it to the the test runner.
+    @given wraps a function to expose it to the test runner.
     If you don't want it to be run immediately wrap it inside a
     test function yourself.
 
@@ -749,7 +749,7 @@ class TestingState(object):
                         # If successful, retry the removal pass
                         if consider(attempt):
                             continue
-                    removal_index -= 1
+                removal_index -= 1
 
 
 def shrink_zeroes(current: array[int], test: InterestTest) -> array[int]:
