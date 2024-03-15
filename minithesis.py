@@ -657,12 +657,13 @@ class TestingState(object):
         while prev != self.result:
             prev = self.result
 
-            # A note on weird loop order: We iterate backwards
-            # through the choice sequence rather than forwards,
-            # because later bits tend to depend on earlier bits
-            # so it's easier to make changes near the end and
-            # deleting bits at the end may allow us to make
-            # changes earlier on that we we'd have missed.
+            # A note on weird loop order in shrinking passes:
+            # We iterate backwards through the choice sequence
+            # rather than forwards, because later bits tend to
+            # depend on earlier bits so it's easier to make
+            # changes near the end and deleting bits at the end
+            # may allow us to make changes earlier on that we'd
+            # have missed.
             #
             # Note that we do not restart the loop at the end
             # when we find a successful shrink. This is because
@@ -694,35 +695,8 @@ class TestingState(object):
             self.result = shrink_sort(self.result, consider)
 
             # Try adjusting nearby pairs of integers by redistributing value
-            # between them. This is useful for tests that depend on the
-            # sum of some generated values.
-            for k in [2, 1]:
-                for i in range(len(self.result) - 1 - k, -1, -1):
-                    j = i + k
-                    # This check is necessary because the previous changes
-                    # might have shrunk the size of result, but also it's tedious
-                    # to write tests for this so I didn't.
-                    if j < len(self.result):  # pragma: no cover
-                        # Try swapping out of order pairs
-                        if self.result[i] > self.result[j]:
-                            is_interesting_with_replacement(
-                                self.result,
-                                {j: self.result[i], i: self.result[j]},
-                                consider,
-                            )
-                        # j could be out of range if the previous swap succeeded.
-                        if j < len(self.result) and self.result[i] > 0:
-                            previous_i = self.result[i]
-                            previous_j = self.result[j]
-                            bin_search_down(
-                                0,
-                                previous_i,
-                                lambda v: is_interesting_with_replacement(
-                                    self.result,
-                                    {i: v, j: previous_j + (previous_i - v)},
-                                    consider,
-                                ),
-                            )
+            # between them.
+            self.result = shrink_redistribute(self.result, consider)
 
     def shrink_remove(self, consider):
         # Try removing chunks, starting from the end.
@@ -832,6 +806,44 @@ def shrink_sort(current: array[int], is_interesting: InterestTest) -> array[int]
             )
             if is_interesting(attempt):
                 current = attempt
+    return current
+
+
+def shrink_redistribute(
+    current: array[int], is_interesting: InterestTest
+) -> array[int]:
+    # Try adjusting nearby pairs of integers by redistributing value
+    # between them. This is useful for tests that depend on the
+    # sum of some generated values.
+    for gap in [2, 1]:
+        for i in reversed(range(len(current) - gap)):
+            j = i + gap
+            # This check is necessary because the previous changes
+            # might have shrunk the size of result, but also it's tedious
+            # to write tests for this so I didn't.
+            if j < len(current):  # pragma: no cover
+                # Try swapping out of order pairs
+                if current[i] > current[j]:
+                    attempt = array("Q", current)
+                    attempt[i], attempt[j] = attempt[j], attempt[i]
+                    if is_interesting(attempt):
+                        current = attempt
+                # j could be out of range if the previous swap succeeded.
+                if j < len(current) and current[i] > 0:
+                    previous_i = current[i]
+                    previous_j = current[j]
+                    attempt = array("Q", current)
+                    attempt[i] = bin_search_down(
+                        0,
+                        previous_i,
+                        lambda v: is_interesting_with_replacement(
+                            attempt,
+                            {i: v, j: previous_j + (previous_i - v)},
+                            is_interesting,
+                        ),
+                    )
+                    attempt[j] = previous_j + (previous_i - attempt[i])
+                    current = attempt
     return current
 
 
