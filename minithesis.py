@@ -86,14 +86,11 @@ InterestTest = Callable[[array], bool]  # Really array[int] -> bool
 
 
 class Database(Protocol):
-    def __setitem__(self, key: str, value: bytes) -> None:
-        ...
+    def __setitem__(self, key: str, value: bytes) -> None: ...
 
-    def get(self, key: str) -> Optional[bytes]:
-        ...
+    def get(self, key: str) -> Optional[bytes]: ...
 
-    def __delitem__(self, key: str) -> None:
-        ...
+    def __delitem__(self, key: str) -> None: ...
 
 
 def run_test(
@@ -677,7 +674,7 @@ class TestingState(object):
             # issues, but the end result should still be fine.
 
             # First try deleting each choice we made in chunks.
-            self.shrink_remove(consider)
+            self.result = shrink_remove(self.result, consider)
 
             # Now we try replacing blocks of choices with zeroes.
             self.result = shrink_zeroes(self.result, consider)
@@ -698,58 +695,62 @@ class TestingState(object):
             # between them.
             self.result = shrink_redistribute(self.result, consider)
 
-    def shrink_remove(self, consider):
-        # Try removing chunks, starting from the end.
-        # We try longer chunks because this allows us to
-        # delete whole composite elements: e.g. deleting an
-        # element from a generated list requires us to delete
-        # both the choice of whether to include it and also
-        # the element itself, which may involve more than one
-        # choice. Some things will take more than 8 choices
-        # in the sequence. That's too bad, we may not be
-        # able to delete those. In Hypothesis proper we
-        # record the boundaries corresponding to ``any``
-        # calls so that we can try deleting those, but
-        # that's pretty high overhead and also a bunch of
-        # slightly annoying code that it's not worth porting.
-        #
-        # We could instead do a quadratic amount of work
-        # to try all boundaries, but in general we don't
-        # want to do that because even a shrunk test case
-        # can involve a relatively large number of choices.
-        for n_to_remove in range(8, 0, -1):
-            removal_index = len(self.result) - n_to_remove - 1
-            while removal_index >= 0:
-                if removal_index >= len(self.result):
-                    # Can happen if we successfully lowered
-                    # the value at removal_index - 1
-                    removal_index -= 1
-                    continue
-                attempt = (
-                    self.result[:removal_index]
-                    + self.result[removal_index + n_to_remove :]
-                )
-                assert len(attempt) < len(self.result)
-                if not consider(attempt):
-                    # If we have dependencies on some length
-                    # parameter, e.g. draw a number between
-                    # 0 and 10 and then draw that many
-                    # elements, shrinking often gets stuck
-                    # because the decision to add many
-                    # elements was made early in the chain.
-                    # We check if the element just
-                    # prior to our removal could be a length
-                    # and try decreasing it.
-                    # This can't delete everything that occurs
-                    # as described, but it can delete some
-                    # things and often will get us unstuck
-                    # when nothing else does.
-                    if removal_index > 0 and attempt[removal_index - 1] > 0:
-                        attempt[removal_index - 1] -= 1
-                        # If successful, retry the removal pass
-                        if consider(attempt):
-                            continue
+
+def shrink_remove(current: array[int], is_interesting: InterestTest) -> array[int]:
+    # Try removing chunks, starting from the end.
+    # We try longer chunks because this allows us to
+    # delete whole composite elements: e.g. deleting an
+    # element from a generated list requires us to delete
+    # both the choice of whether to include it and also
+    # the element itself, which may involve more than one
+    # choice. Some things will take more than 8 choices
+    # in the sequence. That's too bad, we may not be
+    # able to delete those. In Hypothesis proper we
+    # record the boundaries corresponding to ``any``
+    # calls so that we can try deleting those, but
+    # that's pretty high overhead and also a bunch of
+    # slightly annoying code that it's not worth porting.
+    #
+    # We could instead do a quadratic amount of work
+    # to try all boundaries, but in general we don't
+    # want to do that because even a shrunk test case
+    # can involve a relatively large number of choices.
+    for n_to_remove in range(8, 0, -1):
+        removal_index = len(current) - n_to_remove - 1
+        while removal_index >= 0:
+            if removal_index >= len(current):
+                # Can happen if we successfully lowered
+                # the value at removal_index - 1
                 removal_index -= 1
+                continue
+            attempt = current[:removal_index] + current[removal_index + n_to_remove :]
+            assert len(attempt) < len(current)
+            if is_interesting(attempt):
+                current = attempt
+                removal_index -= 1
+                continue
+            else:
+                # If we have dependencies on some length
+                # parameter, e.g. draw a number between
+                # 0 and 10 and then draw that many
+                # elements, shrinking often gets stuck
+                # because the decision to add many
+                # elements was made early in the chain.
+                # We check if the element just
+                # prior to our removal could be a length
+                # and try decreasing it.
+                # This can't delete everything that occurs
+                # as described, but it can delete some
+                # things and often will get us unstuck
+                # when nothing else does.
+                if removal_index > 0 and attempt[removal_index - 1] > 0:
+                    attempt[removal_index - 1] -= 1
+                    # If successful, retry the removal pass
+                    if is_interesting(attempt):
+                        current = attempt
+                        continue
+                removal_index -= 1
+    return current
 
 
 def shrink_zeroes(current: array[int], test: InterestTest) -> array[int]:
