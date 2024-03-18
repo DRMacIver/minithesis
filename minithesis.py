@@ -82,6 +82,8 @@ T = TypeVar("T", covariant=True)
 S = TypeVar("S", covariant=True)
 U = TypeVar("U")  # Invariant
 
+InterestTest = Callable[[array], bool]  # Really array[int] -> bool
+
 
 class Database(Protocol):
     def __setitem__(self, key: str, value: bytes) -> None:
@@ -116,7 +118,7 @@ def run_test(
     that fails.
 
     The test will be run immediately, unlike in Hypothesis where
-    @given wraps a function to expose it to the the test runner.
+    @given wraps a function to expose it to the test runner.
     If you don't want it to be run immediately wrap it inside a
     test function yourself.
 
@@ -655,12 +657,13 @@ class TestingState(object):
         while prev != self.result:
             prev = self.result
 
-            # A note on weird loop order: We iterate backwards
-            # through the choice sequence rather than forwards,
-            # because later bits tend to depend on earlier bits
-            # so it's easier to make changes near the end and
-            # deleting bits at the end may allow us to make
-            # changes earlier on that we we'd have missed.
+            # A note on weird loop order in shrinking passes:
+            # We iterate backwards through the choice sequence
+            # rather than forwards, because later bits tend to
+            # depend on earlier bits so it's easier to make
+            # changes near the end and deleting bits at the end
+            # may allow us to make changes earlier on that we'd
+            # have missed.
             #
             # Note that we do not restart the loop at the end
             # when we find a successful shrink. This is because
@@ -674,98 +677,13 @@ class TestingState(object):
             # issues, but the end result should still be fine.
 
             # First try deleting each choice we made in chunks.
-            # We try longer chunks because this allows us to
-            # delete whole composite elements: e.g. deleting an
-            # element from a generated list requires us to delete
-            # both the choice of whether to include it and also
-            # the element itself, which may involve more than one
-            # choice. Some things will take more than 8 choices
-            # in the sequence. That's too bad, we may not be
-            # able to delete those. In Hypothesis proper we
-            # record the boundaries corresponding to ``any``
-            # calls so that we can try deleting those, but
-            # that's pretty high overhead and also a bunch of
-            # slightly annoying code that it's not worth porting.
-            #
-            # We could instead do a quadratic amount of work
-            # to try all boundaries, but in general we don't
-            # want to do that because even a shrunk test case
-            # can involve a relatively large number of choices.
-            k = 8
-            while k > 0:
-                i = len(self.result) - k - 1
-                while i >= 0:
-                    if i >= len(self.result):
-                        # Can happen if we successfully lowered
-                        # the value at i - 1
-                        i -= 1
-                        continue
-                    attempt = self.result[:i] + self.result[i + k :]
-                    assert len(attempt) < len(self.result)
-                    if not consider(attempt):
-                        # This fixes a common problem that occurs
-                        # when you have dependencies on some
-                        # length parameter. e.g. draw a number
-                        # between 0 and 10 and then draw that
-                        # many elements. This can't delete
-                        # everything that occurs that way, but
-                        # it can delete some things and often
-                        # will get us unstuck when nothing else
-                        # does.
-                        if i > 0 and attempt[i - 1] > 0:
-                            attempt[i - 1] -= 1
-                            if consider(attempt):
-                                i += 1
-                        i -= 1
-                k //= 2
-
-            def replace(values: Mapping[int, int]) -> bool:
-                """Attempts to replace some indices in the current
-                result with new values. Useful for some purely lexicographic
-                reductions that we are about to perform."""
-                assert self.result is not None
-                attempt = array("Q", self.result)
-                for i, v in values.items():
-                    # The size of self.result can change during shrinking.
-                    # If that happens, stop attempting to make use of these
-                    # replacements because some other shrink pass is better
-                    # to run now.
-                    if i >= len(attempt):
-                        return False
-                    attempt[i] = v
-                return consider(attempt)
+            self.result = shrink_remove(self.result, consider)
 
             # Now we try replacing blocks of choices with zeroes.
-            # Note that unlike the above we skip k = 1 because we
-            # handle that in the next step. Often (but not always)
-            # a block of all zeroes is the shortlex smallest value
-            # that a region can be.
-            k = 8
-
-            while k > 1:
-                i = len(self.result) - k
-                while i >= 0:
-                    if replace({j: 0 for j in range(i, i + k)}):
-                        # If we've succeeded then all of [i, i + k]
-                        # is zero so we adjust i so that the next region
-                        # does not overlap with this at all.
-                        i -= k
-                    else:
-                        # Otherwise we might still be able to zero some
-                        # of these values but not the last one, so we
-                        # just go back one.
-                        i -= 1
-                k //= 2
+            self.result = shrink_zeroes(self.result, consider)
 
             # Now try replacing each choice with a smaller value
-            # by doing a binary search. This will replace n with 0 or n - 1
-            # if possible, but will also more efficiently replace it with
-            # a smaller number than doing multiple subtractions would.
-            i = len(self.result) - 1
-            while i >= 0:
-                # Attempt to replace
-                bin_search_down(0, self.result[i], lambda v: replace({i: v}))
-                i -= 1
+            self.result = shrink_lower(self.result, consider)
 
             # NB from here on this is just showing off cool shrinker tricks and
             # you probably don't need to worry about it and can skip these bits
@@ -774,40 +692,182 @@ class TestingState(object):
 
             # Try sorting out of order ranges of choices, as ``sort(x) <= x``,
             # so this is always a lexicographic reduction.
-            k = 8
-            while k > 1:
-                for i in range(len(self.result) - k - 1, -1, -1):
-                    consider(
-                        self.result[:i]
-                        + array("Q", sorted(self.result[i : i + k]))
-                        + self.result[i + k :]
-                    )
-                k //= 2
+            self.result = shrink_sort(self.result, consider)
 
             # Try adjusting nearby pairs of integers by redistributing value
-            # between them. This is useful for tests that depend on the
-            # sum of some generated values.
-            for k in [2, 1]:
-                for i in range(len(self.result) - 1 - k, -1, -1):
-                    j = i + k
-                    # This check is necessary because the previous changes
-                    # might have shrunk the size of result, but also it's tedious
-                    # to write tests for this so I didn't.
-                    if j < len(self.result):  # pragma: no cover
-                        # Try swapping out of order pairs
-                        if self.result[i] > self.result[j]:
-                            replace({j: self.result[i], i: self.result[j]})
-                        # j could be out of range if the previous swap succeeded.
-                        if j < len(self.result) and self.result[i] > 0:
-                            previous_i = self.result[i]
-                            previous_j = self.result[j]
-                            bin_search_down(
-                                0,
-                                previous_i,
-                                lambda v: replace(
-                                    {i: v, j: previous_j + (previous_i - v)}
-                                ),
-                            )
+            # between them.
+            self.result = shrink_redistribute(self.result, consider)
+
+
+def shrink_remove(current: array[int], is_interesting: InterestTest) -> array[int]:
+    # Try removing chunks, starting from the end.
+    # We try longer chunks because this allows us to
+    # delete whole composite elements: e.g. deleting an
+    # element from a generated list requires us to delete
+    # both the choice of whether to include it and also
+    # the element itself, which may involve more than one
+    # choice. Some things will take more than 8 choices
+    # in the sequence. That's too bad, we may not be
+    # able to delete those. In Hypothesis proper we
+    # record the boundaries corresponding to ``any``
+    # calls so that we can try deleting those, but
+    # that's pretty high overhead and also a bunch of
+    # slightly annoying code that it's not worth porting.
+    #
+    # We could instead do a quadratic amount of work
+    # to try all boundaries, but in general we don't
+    # want to do that because even a shrunk test case
+    # can involve a relatively large number of choices.
+    for n_to_remove in range(8, 0, -1):
+        removal_index = len(current) - n_to_remove - 1
+        while removal_index >= 0:
+            if removal_index >= len(current):
+                # Can happen if we successfully lowered
+                # the value at removal_index - 1
+                removal_index -= 1
+                continue
+            attempt = current[:removal_index] + current[removal_index + n_to_remove :]
+            assert len(attempt) < len(current)
+            if is_interesting(attempt):
+                current = attempt
+                removal_index -= 1
+                continue
+            else:
+                # If we have dependencies on some length
+                # parameter, e.g. draw a number between
+                # 0 and 10 and then draw that many
+                # elements, shrinking often gets stuck
+                # because the decision to add many
+                # elements was made early in the chain.
+                # We check if the element just
+                # prior to our removal could be a length
+                # and try decreasing it.
+                # This can't delete everything that occurs
+                # as described, but it can delete some
+                # things and often will get us unstuck
+                # when nothing else does.
+                if removal_index > 0 and attempt[removal_index - 1] > 0:
+                    attempt[removal_index - 1] -= 1
+                    # If successful, retry the removal pass
+                    if is_interesting(attempt):
+                        current = attempt
+                        continue
+                removal_index -= 1
+    return current
+
+
+def shrink_zeroes(current: array[int], test: InterestTest) -> array[int]:
+    # Try zero-ing out sections.
+    # Note that we skip a block of size 1 because that will
+    # be taken care of by a pass that tries lower values.
+    # Often (but not always), a block of all zeroes is the
+    # shortlex smallest value that a region can be.
+    for size in [8, 4, 2]:
+        i = len(current) - size
+        while i >= 0:
+            # Zero out section starting at i
+            attempt = (
+                current[:i] + array("Q", (0 for _ in range(size))) + current[i + size :]
+            )
+
+            if test(attempt):
+                current = attempt
+                # If we've succeeded then all of [i, i + size]
+                # is zero so we adjust i so that the next region
+                # does not overlap with this at all.
+                i -= size
+            else:
+                # Otherwise we might still be able to zero some
+                # of these values but not the last one, so we
+                # just go back one.
+                i -= 1
+    return current
+
+
+def shrink_lower(current: array[int], is_interesting: InterestTest) -> array[int]:
+    # Try replacing each choice with a smaller value
+    # by doing a binary search. This will replace n with 0 or n - 1
+    # if possible, but will also more efficiently replace it with
+    # a smaller number than doing multiple subtractions would.
+    for i in reversed(range(len(current))):
+        current[i] = bin_search_down(
+            0,
+            current[i],
+            lambda v: is_interesting_with_replacement(current, {i: v}, is_interesting),
+        )
+    return current
+
+
+def shrink_sort(current: array[int], is_interesting: InterestTest) -> array[int]:
+    # Try sorting out of order ranges of choices, as ``sort(x) <= x``,
+    # so this is always a lexicographic reduction.
+    for size in [8, 4, 2]:
+        for i in reversed(range(len(current) - size)):
+            attempt = (
+                current[:i]
+                + array("Q", sorted(current[i : i + size]))
+                + current[i + size :]
+            )
+            if is_interesting(attempt):
+                current = attempt
+    return current
+
+
+def shrink_redistribute(
+    current: array[int], is_interesting: InterestTest
+) -> array[int]:
+    # Try adjusting nearby pairs of integers by redistributing value
+    # between them. This is useful for tests that depend on the
+    # sum of some generated values.
+    for gap in [2, 1]:
+        for i in reversed(range(len(current) - gap)):
+            j = i + gap
+            # This check is necessary because the previous changes
+            # might have shrunk the size of result, but also it's tedious
+            # to write tests for this so I didn't.
+            if j < len(current):  # pragma: no cover
+                # Try swapping out of order pairs
+                if current[i] > current[j]:
+                    attempt = array("Q", current)
+                    attempt[i], attempt[j] = attempt[j], attempt[i]
+                    if is_interesting(attempt):
+                        current = attempt
+                # j could be out of range if the previous swap succeeded.
+                if j < len(current) and current[i] > 0:
+                    previous_i = current[i]
+                    previous_j = current[j]
+                    attempt = array("Q", current)
+                    attempt[i] = bin_search_down(
+                        0,
+                        previous_i,
+                        lambda v: is_interesting_with_replacement(
+                            attempt,
+                            {i: v, j: previous_j + (previous_i - v)},
+                            is_interesting,
+                        ),
+                    )
+                    attempt[j] = previous_j + (previous_i - attempt[i])
+                    current = attempt
+    return current
+
+
+def is_interesting_with_replacement(
+    current: array[int], values: Mapping[int, int], test: InterestTest
+) -> bool:
+    """Attempts to replace some indices in the current
+    result with new values. Useful for some purely lexicographic
+    reductions that we are about to perform."""
+    assert current is not None
+
+    # If replacement map is out-of-range, abort.
+    # Some other shrinking pass is probably better.
+    if any(i >= len(current) for i in values.keys()):
+        return False
+
+    attempt = array("Q", current)
+    for i, v in values.items():
+        attempt[i] = v
+    return test(attempt)
 
 
 def bin_search_down(lo: int, hi: int, f: Callable[[int], bool]) -> int:
