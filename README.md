@@ -37,5 +37,6 @@ There are a number of ports of minithesis (:tada:). The following are the ones I
 * Dmitry Dygalo and Rik de Kort's Rust port, [minithesis-rust](https://github.com/Rik-de-Kort/minithesis-rust)
 * Justin Blank's Java port, [jiminy-thesis](https://github.com/hyperpape/jiminy-thesis)
 * Valentin Bogad's Julia port, [MiniThesis.jl](https://github.com/Seelengrab/MiniThesis.jl)
+* Mark Wotton's TypeScript port, [miniTSis](https://github.com/lambdamechanic/miniTSis)
 
 If you write a port, please submit a pull request to add it to the list!
