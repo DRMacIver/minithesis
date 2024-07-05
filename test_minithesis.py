@@ -435,7 +435,7 @@ class Failure(Exception):
 
 
 @settings(
-    suppress_health_check=HealthCheck.all(),
+    suppress_health_check=list(HealthCheck),
     deadline=None,
     report_multiple_bugs=False,
     max_examples=50,
