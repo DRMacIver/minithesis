@@ -1,19 +1,17 @@
 # Minithesis
 
-This is is an incredibly minimal implementation of the core idea of [Hypothesis](https://github.com/HypothesisWorks/hypothesis),
-mostly intended for demonstration purposes to show someone how they might
-get the basics of it up and running.
+This is is an incredibly minimal implementation of the core idea of [Hypothesis](https://github.com/HypothesisWorks/hypothesis).
+It is mostly intended to provide a minimal implementation of a powerful modern property-based testing library
+that is easy to port to new languages.
 
-Minithesis supports:
+Minithesis supports the following features absent from most property-based testing libraries.:
 
 * Generating arbitrary values inline in the test, including based on previous test results
 * Fully generic shrinking
-* Preconditions
 * A test database
 * Targeted Property-Based Testing
 
-And it achieves this all in a relatively small amount of code - my original goal was to keep it under 1000 sloc, but then I implemented about twice the feature set I'd intended to and it didn't hit 300 sloc,
-so I doubt I'll come close to that (including comments, docstrings, etc. it might eventually hit 1kloc as I try to make it more easily understandable and more thoroughly explained)
+It achieves all of this in less than 500 lines of relatively straightforward Python (plus comments).
 
 ## Notes
 
