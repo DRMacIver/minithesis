@@ -717,7 +717,7 @@ class TestingState(object):
                             if consider(attempt):
                                 i += 1
                         i -= 1
-                k //= 2
+                k -= 1
 
             def replace(values: Mapping[int, int]) -> bool:
                 """Attempts to replace some indices in the current
@@ -755,7 +755,7 @@ class TestingState(object):
                         # of these values but not the last one, so we
                         # just go back one.
                         i -= 1
-                k //= 2
+                k -= 1
 
             # Now try replacing each choice with a smaller value
             # by doing a binary search. This will replace n with 0 or n - 1
@@ -782,7 +782,7 @@ class TestingState(object):
                         + array("Q", sorted(self.result[i : i + k]))
                         + self.result[i + k :]
                     )
-                k //= 2
+                k -= 1
 
             # Try adjusting nearby pairs of integers by redistributing value
             # between them. This is useful for tests that depend on the
