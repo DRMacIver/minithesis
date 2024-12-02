@@ -1,6 +1,6 @@
 appdirs==1.4.4
 attrs==23.2.0
-black==24.2.0
+black==24.3.0
 click==8.1.7
 coverage==7.4.3
 hypothesis==6.99.5
